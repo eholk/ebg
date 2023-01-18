@@ -339,9 +339,9 @@ mod test {
     #[test]
     fn parse_post_filename() {
         assert_eq!(
-            parse_filename(Path::new(
-                "_posts\\2021-01-14-coming-soon-primitive-computing.md"
-            )),
+            parse_filename(
+                &Path::new("_posts").join("2021-01-14-coming-soon-primitive-computing.md")
+            ),
             Some((
                 Local
                     .with_ymd_and_hms(2021, 1, 14, 0, 0, 0)
@@ -356,7 +356,7 @@ mod test {
     #[test]
     fn primitive_computing_post() {
         let post = Page::from_string(
-            "_posts\\2021-01-14-coming-soon-primitive-computing.md",
+            Path::new("_posts").join("2021-01-14-coming-soon-primitive-computing.md"),
             SourceFormat::Markdown,
             "---\nlayout: post
 title: \"Coming Soon: Primitive Computing\"
