@@ -1,9 +1,12 @@
-use std::path::Path;
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
-use eyre::{ContextCompat, WrapErr};
+use eyre::Context;
 use pathdiff::diff_paths;
 use serde_json::{json, Map, Value};
-use tera::Context;
+use thiserror::Error;
 use tokio::fs;
 use tracing::debug;
 
@@ -12,6 +15,18 @@ use crate::{command_line::Options, page::Page, site::Site};
 use self::atom::generate_atom;
 
 mod atom;
+
+#[derive(Debug, Error)]
+pub(crate) enum GeneratorError {
+    #[error("generating atom feed")]
+    AtomError(#[source] atom::AtomError),
+    #[error("could not compute relative path for {0}")]
+    ComputeRelativePath(PathBuf),
+    #[error("creating destination directory: {}", .0.display())]
+    CreateDestDir(PathBuf, #[source] io::Error),
+    #[error("copying {} to {}", .0.display(), .1.display())]
+    Copy(PathBuf, PathBuf, #[source] io::Error),
+}
 
 pub async fn generate_site(site: &Site, options: &Options) -> eyre::Result<()> {
     for post in site.all_pages() {
@@ -26,24 +41,27 @@ pub async fn generate_site(site: &Site, options: &Options) -> eyre::Result<()> {
             file.display(),
             site.root_dir().display()
         );
-        let dest = options.destination.join(
-            diff_paths(file, site.root_dir()).context("computing destination path for raw file")?,
-        );
+        let Some(relative_dest) = diff_paths(file, site.root_dir()) else {
+            return Err(GeneratorError::ComputeRelativePath(file.into()))?;
+        };
+        let dest = options.destination.join(relative_dest);
 
         if let Some(parent) = dest.parent() {
             fs::create_dir_all(parent)
                 .await
-                .context("creating target directory")?;
+                .map_err(|e| GeneratorError::CreateDestDir(parent.into(), e))?;
         }
 
-        fs::copy(file, dest).await.context("copying raw file")?;
+        fs::copy(file, &dest)
+            .await
+            .map_err(|e| GeneratorError::Copy(file.into(), dest.into(), e))?;
     }
 
     generate_atom(
         site,
         std::fs::File::create(options.destination.join("atom.xml")).context("creating atom.xml")?,
     )
-    .context("generating atom feed")?;
+    .map_err(GeneratorError::AtomError)?;
 
     Ok(())
 }
@@ -103,7 +121,7 @@ async fn generate_page(page: &Page, site: &Site, options: &Options) -> eyre::Res
     debug!("post template: {:?}", page.template());
     let content = match page.template() {
         Some(template) => {
-            let mut context = Context::new();
+            let mut context = tera::Context::new();
             context.insert("site", &site.value());
             context.insert("page", &page.value());
 

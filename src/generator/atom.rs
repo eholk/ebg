@@ -7,10 +7,21 @@ use quick_xml::{
     events::{BytesCData, BytesDecl, BytesText, Event::*},
     Writer,
 };
+use thiserror::Error;
 
 use crate::site::Site;
 
-pub fn generate_atom(site: &Site, out: impl Write) -> eyre::Result<()> {
+#[derive(Error, Debug)]
+pub(crate) enum AtomError {
+    #[error("xml generation")]
+    XmlError(
+        #[source]
+        #[from]
+        quick_xml::Error,
+    ),
+}
+
+pub(crate) fn generate_atom(site: &Site, out: impl Write) -> std::result::Result<(), AtomError> {
     let mut writer = Writer::new(out);
 
     writer.write_event(Decl(BytesDecl::new("1.0", Some("utf-8"), None)))?;
