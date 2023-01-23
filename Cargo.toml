@@ -1,7 +1,10 @@
 [package]
 name = "ebg"
-version = "0.1.0-dev"
+version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/eholk/ebg"
+description = "Eric's Blog Generator, a simple static site generator inspired by Octopress."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
