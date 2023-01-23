@@ -5,7 +5,10 @@ use eyre::WrapErr;
 use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 use tracing::info;
 
-use ebg::{command_line::Options, generator::generate_site, site::Site};
+use ebg::{
+    generator::{generate_site, Options},
+    site::Site,
+};
 
 #[derive(Parser)]
 enum Cli {

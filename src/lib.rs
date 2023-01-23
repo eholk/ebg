@@ -1,8 +1,5 @@
 use generator::GeneratorError;
 
-// FIXME: We don't want to expose the command line directly
-// since it depends on clap
-pub mod command_line;
 pub mod generator;
 mod markdown;
 mod page;
@@ -25,4 +22,16 @@ enum InnerError {
         #[from]
         GeneratorError,
     ),
+}
+
+impl From<InnerError> for Error {
+    fn from(source: InnerError) -> Self {
+        Self { source }
+    }
+}
+
+impl From<GeneratorError> for Error {
+    fn from(value: GeneratorError) -> Self {
+        InnerError::Generator(value).into()
+    }
 }

@@ -10,11 +10,26 @@ use thiserror::Error;
 use tokio::fs;
 use tracing::debug;
 
-use crate::{command_line::Options, page::Page, site::Site};
+use crate::{page::Page, site::Site};
+use clap::Args;
+use clap::ValueHint::DirPath;
 
 use self::atom::generate_atom;
 
 mod atom;
+
+#[derive(Args)]
+pub struct Options {
+    #[arg(value_hint = DirPath)]
+    pub path: PathBuf,
+
+    #[arg(long, short = 'o', value_hint = DirPath, default_value = "publish")]
+    pub destination: PathBuf,
+
+    /// Include posts marked with `published: false`
+    #[arg(long, default_value_t = false)]
+    pub unpublished: bool,
+}
 
 #[derive(Debug, Error)]
 pub(crate) enum GeneratorError {
@@ -26,13 +41,18 @@ pub(crate) enum GeneratorError {
     CreateDestDir(PathBuf, #[source] io::Error),
     #[error("copying {} to {}", .0.display(), .1.display())]
     Copy(PathBuf, PathBuf, #[source] io::Error),
+    #[error("generating page or post \"{0}\"")]
+    // FIXME: use a custom error type here instead of eyre::Report
+    GeneratePage(String, #[source] eyre::Report),
+    #[error("creating file `{}`", .0.display())]
+    CreateFile(PathBuf, #[source] io::Error),
 }
 
-pub async fn generate_site(site: &Site, options: &Options) -> eyre::Result<()> {
+pub async fn generate_site(site: &Site, options: &Options) -> super::Result<()> {
     for post in site.all_pages() {
         generate_page(post, site, options)
             .await
-            .context("generating post")?;
+            .map_err(|e| GeneratorError::GeneratePage(post.title().to_string(), e))?;
     }
 
     for file in site.raw_files() {
@@ -59,7 +79,8 @@ pub async fn generate_site(site: &Site, options: &Options) -> eyre::Result<()> {
 
     generate_atom(
         site,
-        std::fs::File::create(options.destination.join("atom.xml")).context("creating atom.xml")?,
+        std::fs::File::create(options.destination.join("atom.xml"))
+            .map_err(|e| GeneratorError::CreateFile("atom.xml".into(), e))?,
     )
     .map_err(GeneratorError::AtomError)?;
 
