@@ -102,7 +102,7 @@ impl ToValue for Page {
         }
         page.insert(
             "excerpt".to_string(),
-            json!(self.rendered_excerpt().unwrap_or_default()),
+            json!(self.rendered_excerpt().unwrap_or(self.rendered_contents())),
         );
         page.insert("content".to_string(), json!(self.rendered_contents()));
         page.into()
@@ -174,4 +174,38 @@ async fn generate_page(page: &Page, site: &Site, options: &Options) -> eyre::Res
         .context("writing output")?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        generator::ToValue,
+        markdown::CodeFormatter,
+        page::{Page, SourceFormat},
+    };
+
+    /// Regression test for #12
+    #[test]
+    fn template_full_excerpt_when_missing_delimiter() {
+        let mut page = Page::from_string(
+            "2012-10-14-hello.md",
+            SourceFormat::Markdown,
+            "---
+title: Hello
+layout: page
+---
+this is *an excerpt*
+
+this is *also an excerpt*",
+        );
+
+        page.render(&CodeFormatter::new());
+
+        let value = page.value();
+
+        assert_eq!(
+            value["excerpt"],
+            "<p>this is <em>an excerpt</em></p>\n<p>this is <em>also an excerpt</em></p>\n<hr />\n"
+        );
+    }
 }
