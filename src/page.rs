@@ -204,7 +204,7 @@ impl Page {
                     .join(date.year().to_string())
                     .join(format!("{:02}", date.month()))
                     .join(format!("{:02}", date.day()))
-                    .join(self.title_slug()),
+                    .join(self.title_slug().to_string() + "/"),
                 None => Path::new("blog").join(self.title_slug()),
             },
             PageKind::Page => url_from_page_path(&self.source),
@@ -452,7 +452,24 @@ Hello, world!
             SourceFormat::Markdown,
             SRC,
         );
-        assert_eq!(post.url(), "blog/2012/01/07/hello-world");
+        assert_eq!(post.url(), "blog/2012/01/07/hello-world/");
+    }
+
+    /// Regression test for #13
+    #[test]
+    fn url_has_tailing_slash() {
+        const SRC: &str = r#"---
+layout: post
+title: "Hello, World!"
+---
+Hello, world!
+"#;
+        let post = Page::from_string(
+            "_posts/2023-01-24-hello-world.md",
+            SourceFormat::Markdown,
+            SRC,
+        );
+        assert_eq!(post.url(), "blog/2023/01/24/hello-world/");
     }
 
     #[test]
