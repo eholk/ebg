@@ -1,6 +1,6 @@
 [package]
 name = "ebg"
-version = "0.1.1"
+version = "0.1.2-dev"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/eholk/ebg"
@@ -34,3 +34,4 @@ quick-xml = "0.27.1"
 toml = "0.6.0"
 syntect = "5.0.0"
 thiserror = "1.0.38"
+hyper = { version = "0.14.23", features = ["http1", "server", "tcp"] }

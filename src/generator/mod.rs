@@ -18,7 +18,7 @@ use self::atom::generate_atom;
 
 mod atom;
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct Options {
     #[arg(value_hint = DirPath)]
     pub path: PathBuf,
@@ -74,7 +74,7 @@ pub async fn generate_site(site: &Site, options: &Options) -> super::Result<()> 
 
         fs::copy(file, &dest)
             .await
-            .map_err(|e| GeneratorError::Copy(file.into(), dest.into(), e))?;
+            .map_err(|e| GeneratorError::Copy(file.into(), dest, e))?;
     }
 
     generate_atom(

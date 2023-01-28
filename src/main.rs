@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use clap::Parser;
 use eyre::WrapErr;
+use serve::ServerOptions;
 use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 use tracing::info;
 
@@ -10,9 +11,12 @@ use ebg::{
     site::Site,
 };
 
+mod serve;
+
 #[derive(Parser)]
 enum Cli {
     Build(Options),
+    Serve(ServerOptions),
     About,
 }
 
@@ -43,6 +47,7 @@ async fn main() -> eyre::Result<()> {
                 start.elapsed().as_secs_f32()
             );
         }
+        Cli::Serve(options) => serve::serve(options).await?,
         Cli::About => {
             println!("# Syntax Highlighting #");
             println!();
