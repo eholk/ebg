@@ -60,7 +60,7 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
 }
 
 async fn handle_request(req: Request<Body>, site: &Path) -> Result<Response<Body>, Infallible> {
-    info!(?req);
+    debug!(?req);
 
     let response = if req.method() == Method::GET {
         // FIXME: check the URI and find the right file to serve.
@@ -70,6 +70,7 @@ async fn handle_request(req: Request<Body>, site: &Path) -> Result<Response<Body
             Response::new(tokio::fs::read(path).await.unwrap().into())
         } else {
             let path = path.join("index.html");
+            debug!("attempting to serve index path `{}`", path.display());
             Response::new(tokio::fs::read(path).await.unwrap().into())
         }
     } else {
@@ -77,4 +78,82 @@ async fn handle_request(req: Request<Body>, site: &Path) -> Result<Response<Body
     };
 
     Ok(response)
+}
+
+#[cfg(test)]
+mod test {
+    use std::{
+        io::BufRead,
+        path::{Path, PathBuf},
+    };
+
+    use hyper::{body::to_bytes, Request, StatusCode};
+
+    use crate::serve::handle_request;
+
+    fn test_site() -> PathBuf {
+        Path::new(".").join("test").join("data").join("html")
+    }
+
+    /// Make sure we can fetch a file that's known to exist
+    #[tokio::test]
+    async fn get_file() -> eyre::Result<()> {
+        let site = test_site();
+
+        let req = Request::builder().uri("/index.html").body("".into())?;
+
+        let res = handle_request(req, &site).await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let expected = "<!DOCTYPE html>
+<html>
+
+<body>
+    Hello, World!
+</body>
+
+</html>";
+        // Read the body but replace line endings to deal with platform differences.
+        let body = to_bytes(res.into_body())
+            .await?
+            .lines()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(body, expected);
+
+        Ok(())
+    }
+
+    /// Make sure we can fetch the index of a directory
+    #[tokio::test]
+    async fn get_index() -> eyre::Result<()> {
+        let site = test_site();
+
+        let req = Request::builder().uri("/").body("".into())?;
+
+        let res = handle_request(req, &site).await?;
+
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let expected = "<!DOCTYPE html>
+<html>
+
+<body>
+    Hello, World!
+</body>
+
+</html>";
+        // Read the body but replace line endings to deal with platform differences.
+        let body = to_bytes(res.into_body())
+            .await?
+            .lines()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(body, expected);
+
+        Ok(())
+    }
 }

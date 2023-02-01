@@ -18,8 +18,9 @@ use crate::{
 
 #[derive(Deserialize, Default)]
 pub struct Config {
+    #[serde(default)]
     pub title: String,
-    pub url: String,
+    pub url: Option<String>,
     pub author: Option<String>,
     pub subtitle: Option<String>,
     pub posts: Option<PathBuf>,
@@ -117,7 +118,10 @@ impl Site {
     }
 
     pub fn base_url(&self) -> &str {
-        &self.config.url
+        match &self.config.url {
+            Some(url) => url,
+            None => "",
+        }
     }
 
     pub fn title(&self) -> &str {
@@ -142,6 +146,10 @@ async fn load_posts(
     root_dir: &Path,
     include_unpublished: bool,
 ) -> eyre::Result<Vec<Page>> {
+    if !path.is_dir() {
+        return Ok(vec![]);
+    }
+
     let mut posts = vec![];
     let mut dirstream = ReadDirStream::new(
         fs::read_dir(path)
@@ -218,6 +226,6 @@ mod test {
 
         let config: Config = toml::from_str(config).unwrap();
 
-        assert_eq!(config.url, "https://example.com");
+        assert_eq!(config.url, Some("https://example.com".to_string()));
     }
 }

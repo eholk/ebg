@@ -49,12 +49,19 @@ pub(crate) enum GeneratorError {
 }
 
 pub async fn generate_site(site: &Site, options: &Options) -> super::Result<()> {
+    // Create the destination directory
+    tokio::fs::create_dir_all(&options.destination)
+        .await
+        .map_err(|e| GeneratorError::CreateDestDir(options.destination.clone(), e))?;
+
+    // Generate pages
     for post in site.all_pages() {
         generate_page(post, site, options)
             .await
             .map_err(|e| GeneratorError::GeneratePage(post.title().to_string(), e))?;
     }
 
+    // Copy raw files (those that don't need processing or generation)
     for file in site.raw_files() {
         debug!(
             "copying from {}, root {}",
@@ -77,6 +84,10 @@ pub async fn generate_site(site: &Site, options: &Options) -> super::Result<()> 
             .map_err(|e| GeneratorError::Copy(file.into(), dest, e))?;
     }
 
+    // Generate the atom feed
+    //
+    // FIXME: this is only relevant if we have posts. Maybe it should have an option to disable it
+    // in the site config?
     generate_atom(
         site,
         std::fs::File::create(options.destination.join("atom.xml"))
