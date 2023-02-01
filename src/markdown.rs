@@ -2,7 +2,7 @@
 //!
 //! These are implemented as iterators from markdown events to markdown events.
 
-use pulldown_cmark::{CodeBlockKind, Event, Tag};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Tag};
 use std::collections::HashMap;
 use syntect::{highlighting::ThemeSet, html::highlighted_html_for_string, parsing::SyntaxSet};
 
@@ -221,9 +221,52 @@ fn parse_lang(s: &str) -> LangOptions<'_> {
     LangOptions { lang, line_numbers }
 }
 
+pub fn extract_title_and_adjust_headers<'a>(
+    events: impl Iterator<Item = Event<'a>>,
+) -> (impl Iterator<Item = Event<'a>>, Option<String>) {
+    let mut output = vec![];
+
+    enum State {
+        Init,
+        InTitle,
+        PastTitle,
+    }
+
+    let mut state = State::Init;
+
+    let mut has_title = false;
+    let mut title = String::new();
+
+    for event in events {
+        match (&event, &state) {
+            (Event::Start(Tag::Heading(HeadingLevel::H1, _fragment, _classes)), State::Init) => {
+                state = State::InTitle;
+                has_title = true;
+            }
+            (Event::End(Tag::Heading(HeadingLevel::H1, _fragment, _classes)), State::InTitle) => {
+                state = State::PastTitle;
+            }
+            (_, State::Init) => {
+                state = State::PastTitle;
+                output.push(event);
+            }
+            (Event::Text(text) | Event::Html(text) | Event::Code(text), State::InTitle) => {
+                title += text;
+            }
+            (_, State::InTitle) => {}
+            // FIXME: promote headings by one level when has_title is true
+            (_, State::PastTitle) => output.push(event),
+        }
+    }
+
+    (output.into_iter(), has_title.then_some(title))
+}
+
 #[cfg(test)]
 mod test {
-    use super::parse_lang;
+    use pulldown_cmark::Parser;
+
+    use super::{extract_title_and_adjust_headers, parse_lang};
 
     #[test]
     fn parse_lang_options() -> eyre::Result<()> {
@@ -244,5 +287,20 @@ mod test {
         assert!(opts.line_numbers);
 
         Ok(())
+    }
+
+    #[test]
+    fn extract_title_heading() {
+        let md = "
+# This is the title
+
+This is not
+";
+
+        let parser = Parser::new(md);
+
+        let (_, title) = extract_title_and_adjust_headers(parser);
+
+        assert_eq!(title, Some("This is the title".to_string()));
     }
 }

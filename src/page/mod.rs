@@ -10,7 +10,7 @@ use pulldown_cmark::Parser;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 
-use crate::markdown::{collect_footnotes, CodeFormatter};
+use crate::markdown::{collect_footnotes, extract_title_and_adjust_headers, CodeFormatter};
 
 use self::parsing_helpers::{
     deserialize_comma_separated_list, deserialize_date, find_frontmatter_delimiter,
@@ -70,6 +70,10 @@ pub struct Page {
     mainmatter: RangeFrom<usize>,
     parsed_frontmatter: Option<FrontMatter>,
     rendered_contents: Option<String>,
+    /// The title that comes from the content if it is markdown and starts with an h1.
+    ///
+    /// Filled in by [Page::render].
+    content_title: Option<String>,
 }
 
 impl Page {
@@ -137,6 +141,7 @@ impl Page {
             mainmatter,
             parsed_frontmatter,
             rendered_contents: None,
+            content_title: None,
         }
     }
 
@@ -144,7 +149,10 @@ impl Page {
         self.rendered_contents = Some(match self.format {
             SourceFormat::Html => self.contents[self.mainmatter.clone()].to_string(),
             SourceFormat::Markdown => {
-                render_markdown(&self.contents[self.mainmatter.clone()], code_formatter)
+                let (contents, title) =
+                    render_markdown(&self.contents[self.mainmatter.clone()], code_formatter);
+                self.content_title = title;
+                contents
             }
         })
     }
@@ -297,7 +305,12 @@ fn parse_date_from_filename(filename: &str) -> Option<(Date, &str)> {
     ))
 }
 
-fn render_markdown(contents: &str, code_formatter: &CodeFormatter) -> String {
+/// Renders a page's markdown contents
+///
+/// If this is a new-style post (i.e. one that starts with an h1 that indicates the title), the
+/// second field of the returned tuple will be the page's title extracted from the markdown
+/// contents.
+fn render_markdown(contents: &str, code_formatter: &CodeFormatter) -> (String, Option<String>) {
     let parser = Parser::new_ext(
         contents,
         pulldown_cmark::Options::ENABLE_FOOTNOTES
@@ -305,12 +318,15 @@ fn render_markdown(contents: &str, code_formatter: &CodeFormatter) -> String {
             | pulldown_cmark::Options::ENABLE_TABLES
             | pulldown_cmark::Options::ENABLE_HEADING_ATTRIBUTES,
     );
+
+    let (parser, title) = extract_title_and_adjust_headers(parser);
+
     let mut markdown_buffer = String::with_capacity(contents.len() * 2);
     pulldown_cmark::html::push_html(
         &mut markdown_buffer,
         code_formatter.format_codeblocks(collect_footnotes(parser)),
     );
-    markdown_buffer
+    (markdown_buffer, title)
 }
 
 #[cfg(test)]
