@@ -253,6 +253,25 @@ pub fn extract_title_and_adjust_headers<'a>(
             (Event::Text(text) | Event::Html(text) | Event::Code(text), State::InTitle) => {
                 title += text;
             }
+
+            // Promote headings
+            (Event::Start(Tag::Heading(level, fragment, classes)), State::PastTitle)
+                if has_title =>
+            {
+                output.push(Event::Start(Tag::Heading(
+                    promote_heading(*level),
+                    *fragment,
+                    classes.clone(),
+                )))
+            }
+            (Event::End(Tag::Heading(level, fragment, classes)), State::PastTitle) if has_title => {
+                output.push(Event::End(Tag::Heading(
+                    promote_heading(*level),
+                    *fragment,
+                    classes.clone(),
+                )))
+            }
+
             (_, State::InTitle) => {}
             // FIXME: promote headings by one level when has_title is true
             (_, State::PastTitle) => output.push(event),
@@ -262,9 +281,19 @@ pub fn extract_title_and_adjust_headers<'a>(
     (output.into_iter(), has_title.then_some(title))
 }
 
+fn promote_heading(level: HeadingLevel) -> HeadingLevel {
+    match level {
+        HeadingLevel::H1 | HeadingLevel::H2 => HeadingLevel::H1,
+        HeadingLevel::H3 => HeadingLevel::H2,
+        HeadingLevel::H4 => HeadingLevel::H3,
+        HeadingLevel::H5 => HeadingLevel::H4,
+        HeadingLevel::H6 => HeadingLevel::H5,
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use pulldown_cmark::Parser;
+    use pulldown_cmark::{Event, HeadingLevel, Parser, Tag};
 
     use super::{extract_title_and_adjust_headers, parse_lang};
 
@@ -301,6 +330,30 @@ This is not
 
         let (_, title) = extract_title_and_adjust_headers(parser);
 
+        assert_eq!(title, Some("This is the title".to_string()));
+    }
+
+    #[test]
+    fn promote_titles() {
+        let events = [
+            Event::Start(Tag::Heading(HeadingLevel::H1, None, vec![])),
+            Event::Text("This is the title".into()),
+            Event::End(Tag::Heading(HeadingLevel::H1, None, vec![])),
+            Event::Start(Tag::Heading(HeadingLevel::H2, None, vec![])),
+            Event::Text("This is a section".into()),
+            Event::End(Tag::Heading(HeadingLevel::H2, None, vec![])),
+        ];
+
+        let (events, title) = extract_title_and_adjust_headers(events.into_iter());
+
+        assert_eq!(
+            events.collect::<Vec<_>>(),
+            vec![
+                Event::Start(Tag::Heading(HeadingLevel::H1, None, vec![])),
+                Event::Text("This is a section".into()),
+                Event::End(Tag::Heading(HeadingLevel::H1, None, vec![])),
+            ]
+        );
         assert_eq!(title, Some("This is the title".to_string()));
     }
 }
