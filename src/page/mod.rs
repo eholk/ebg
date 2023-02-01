@@ -178,6 +178,10 @@ impl Page {
     }
 
     pub fn title(&self) -> &str {
+        if let Some(title) = &self.content_title {
+            return title;
+        }
+
         match &self.parsed_frontmatter {
             Some(frontmatter) => frontmatter.title.as_str(),
             None => "unknown", // TODO: generate a title from the file name or some other means
@@ -628,5 +632,26 @@ this is *not an excerpt*",
             page.rendered_excerpt(),
             Some("<p>this is <em>an excerpt</em></p>\n")
         );
+    }
+
+    #[test]
+    fn leading_h1_as_title() {
+        const SRC: &str = r#"---
+layout: post
+title: "Hello, World!"
+date: 2012-01-07 14:40
+comments: true
+categories:
+---
+
+# This is the title
+"#;
+        let mut post = Page::from_string(
+            "_posts/2012-01-07-hello-world.md",
+            SourceFormat::Markdown,
+            SRC,
+        );
+        post.render(&CodeFormatter::new());
+        assert_eq!(post.title(), "This is the title");
     }
 }
