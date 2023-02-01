@@ -8,7 +8,7 @@ use ebg::{
 use eyre::Context;
 use hyper::{
     service::{make_service_fn, service_fn},
-    Body, Method, Request, Response, Server,
+    Body, Method, Request, Response, Server, StatusCode,
 };
 use tracing::{debug, info};
 
@@ -70,8 +70,16 @@ async fn handle_request(req: Request<Body>, site: &Path) -> Result<Response<Body
             Response::new(tokio::fs::read(path).await.unwrap().into())
         } else {
             let path = path.join("index.html");
-            debug!("attempting to serve index path `{}`", path.display());
-            Response::new(tokio::fs::read(path).await.unwrap().into())
+            if path.exists() {
+                debug!("attempting to serve index path `{}`", path.display());
+                Response::new(tokio::fs::read(path).await.unwrap().into())
+            } else {
+                debug!("`{}` not found, returning 404", path.display());
+                Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body("Not found".into())
+                    .unwrap()
+            }
         }
     } else {
         Response::new("Hello, World!".into())
@@ -145,6 +153,30 @@ mod test {
 </body>
 
 </html>";
+        // Read the body but replace line endings to deal with platform differences.
+        let body = to_bytes(res.into_body())
+            .await?
+            .lines()
+            .map(Result::unwrap)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_eq!(body, expected);
+
+        Ok(())
+    }
+
+    /// Make sure we can fetch the index of a directory
+    #[tokio::test]
+    async fn not_found() -> eyre::Result<()> {
+        let site = test_site();
+
+        let req = Request::builder().uri("/not-found").body("".into())?;
+
+        let res = handle_request(req, &site).await?;
+
+        assert_eq!(res.status(), StatusCode::NOT_FOUND);
+
+        let expected = "Not found";
         // Read the body but replace line endings to deal with platform differences.
         let body = to_bytes(res.into_body())
             .await?
