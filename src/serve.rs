@@ -1,4 +1,4 @@
-use std::{convert::Infallible, net::SocketAddr, path::Path, sync::Arc};
+use std::{convert::Infallible, net::SocketAddr, path::Path, time::Instant};
 
 use clap::Args;
 use ebg::{
@@ -10,7 +10,8 @@ use hyper::{
     service::{make_service_fn, service_fn},
     Body, Method, Request, Response, Server, StatusCode,
 };
-use tracing::{debug, info};
+use notify::{RecursiveMode, Watcher};
+use tracing::{debug, error, info};
 
 #[derive(Args)]
 pub struct ServerOptions {
@@ -21,25 +22,55 @@ pub struct ServerOptions {
     port: u16,
 }
 
+#[derive(Debug)]
+enum GeneratorMessage {
+    Rebuild,
+}
+
 pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], options.port));
 
     let args = options.build_opts.clone();
 
-    let site = Arc::new(
-        Site::from_directory(options.build_opts.path, options.build_opts.unpublished)
-            .await
-            .context("loading site content")?,
-    );
+    let (send, mut recv) = tokio::sync::mpsc::channel(1);
+
+    let mut watcher = notify::recommended_watcher(move |result| match result {
+        Ok(event) => {
+            debug!(?event);
+            let result = send.blocking_send(GeneratorMessage::Rebuild);
+            debug!(?result);
+        }
+        Err(e) => error!("{e}"),
+    })?;
+
+    watcher.watch(&options.build_opts.path, RecursiveMode::Recursive)?;
 
     // FIXME: Watch for file changes and rebuild the site if it changes.
-    let generator_site = site.clone();
     let generate = tokio::spawn(async move {
-        // FIXME: share this with the build code
-        generate_site(&generator_site, &args)
-            .await
-            .context("generating site")
-            .unwrap();
+        loop {
+            let start = Instant::now();
+
+            let site =
+                Site::from_directory(&options.build_opts.path, options.build_opts.unpublished)
+                    .await
+                    .context("loading site content")
+                    .unwrap();
+
+            // FIXME: share this with the build code
+            generate_site(&site, &args)
+                .await
+                .context("generating site")
+                .unwrap();
+
+            info!(
+                "Generating site took {:.3} seconds",
+                start.elapsed().as_secs_f32()
+            );
+
+            match recv.recv().await.unwrap() {
+                GeneratorMessage::Rebuild => (),
+            }
+        }
     });
 
     // FIXME: we probably don't want to actually leak this...

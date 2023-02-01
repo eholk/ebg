@@ -35,3 +35,4 @@ toml = "0.6.0"
 syntect = "5.0.0"
 thiserror = "1.0.38"
 hyper = { version = "0.14.23", features = ["http1", "server", "tcp"] }
+notify = "5.1.0"
