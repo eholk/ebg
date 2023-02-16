@@ -10,7 +10,7 @@ use hyper::{
     service::{make_service_fn, service_fn},
     Body, Method, Request, Response, Server, StatusCode,
 };
-use notify::{RecursiveMode, Watcher};
+use notify::{Event, RecursiveMode, Watcher};
 use tracing::{debug, error, info};
 
 #[derive(Args)]
@@ -31,19 +31,31 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], options.port));
 
     let args = options.build_opts.clone();
+    let destination = std::fs::canonicalize(&args.destination)?;
 
     let (send, mut recv) = tokio::sync::mpsc::channel(1);
 
-    let mut watcher = notify::recommended_watcher(move |result| match result {
+    let mut watcher = notify::recommended_watcher(move |result: Result<Event, _>| match result {
         Ok(event) => {
             debug!(?event);
+            if event
+                .paths
+                .iter()
+                .all(|path| path.starts_with(&destination))
+            {
+                debug!("Changed file is in output directory; skipping rebuild");
+                return;
+            }
             let result = send.blocking_send(GeneratorMessage::Rebuild);
             debug!(?result);
         }
         Err(e) => error!("{e}"),
     })?;
 
-    watcher.watch(&options.build_opts.path, RecursiveMode::Recursive)?;
+    watcher.watch(
+        &std::fs::canonicalize(&options.build_opts.path)?,
+        RecursiveMode::Recursive,
+    )?;
 
     // FIXME: Watch for file changes and rebuild the site if it changes.
     let generate = tokio::spawn(async move {

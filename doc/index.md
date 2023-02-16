@@ -26,6 +26,24 @@ content = [
 
 ## Anatomy of a Page and Post
 
+Pages may be written as HTML or Markdown.
+Additional information is specified in YAML frontmatter.
+A simple HTML page would look something like this:
+
+```html
+---
+title: Sample Page
+---
+
+<p>This is a sample page.</p>
+```
+
+The lines between the `---` are the frontmatter.
+The remainder of the post comes afterwards.
+
+For Markdown files, these are converted to HTML, while HTML content is rendered unchanged into the site template.
+After rendering, site macros are expanded.
+
 ## Templates
 
 Templates describe how page content should be formatted.
