@@ -10,6 +10,7 @@ use ebg::{
     generator::{generate_site, Options},
     site::Site,
 };
+use tracing_subscriber::{prelude::*, EnvFilter};
 
 mod serve;
 
@@ -25,10 +26,9 @@ async fn main() -> eyre::Result<()> {
     let start = Instant::now();
     let args = Cli::parse();
 
-    tracing_subscriber::fmt()
-        .pretty()
-        // .with_ansi(false)
-        .with_max_level(tracing::Level::DEBUG)
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().pretty())
+        .with(EnvFilter::from_env("EBG_LOG"))
         .init();
 
     match args {

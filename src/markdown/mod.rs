@@ -2,8 +2,6 @@
 //!
 //! These are implemented as iterators from markdown events to markdown events.
 
-use std::{borrow::BorrowMut, cell::RefCell};
-
 use bumpalo::Bump;
 use pulldown_cmark::{Event, HeadingLevel, Tag};
 
