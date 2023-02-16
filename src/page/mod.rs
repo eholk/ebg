@@ -10,7 +10,9 @@ use pulldown_cmark::Parser;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 
-use crate::markdown::{collect_footnotes, extract_title_and_adjust_headers, CodeFormatter};
+use crate::markdown::{
+    collect_footnotes, extract_title_and_adjust_headers, CodeFormatter, HeadingAnchors,
+};
 
 use self::parsing_helpers::{
     deserialize_comma_separated_list, deserialize_date, find_frontmatter_delimiter,
@@ -324,6 +326,8 @@ fn render_markdown(contents: &str, code_formatter: &CodeFormatter) -> (String, O
     );
 
     let (parser, title) = extract_title_and_adjust_headers(parser);
+    let mut anchors = HeadingAnchors::new();
+    let parser = anchors.add_anchors(parser);
 
     let mut markdown_buffer = String::with_capacity(contents.len() * 2);
     pulldown_cmark::html::push_html(

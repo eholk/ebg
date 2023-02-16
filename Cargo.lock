@@ -389,6 +389,7 @@ name = "ebg"
 version = "0.1.3"
 dependencies = [
  "async-walkdir",
+ "bumpalo",
  "chrono",
  "clap",
  "eyre",
@@ -402,6 +403,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "slug",
  "syntect",
  "tera",
  "thiserror",

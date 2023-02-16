@@ -36,3 +36,5 @@ syntect = "5.0.0"
 thiserror = "1.0.38"
 hyper = { version = "0.14.24", features = ["http1", "server", "tcp"] }
 notify = "5.1.0"
+bumpalo = "3.12.0"
+slug = "0.1.4"
