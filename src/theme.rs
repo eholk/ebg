@@ -6,10 +6,12 @@ use eyre::{ContextCompat, WrapErr};
 use tera::Tera;
 use tracing::debug;
 
-pub fn create_template_engine(root_dir: &Path) -> eyre::Result<Tera> {
+use crate::site::Config;
+
+pub fn create_template_engine(root_dir: &Path, config: &Config) -> eyre::Result<Tera> {
     let template_path = std::env::current_dir()?
         .join(root_dir)
-        .join("templates")
+        .join(config.theme.as_ref().map_or(Path::new("theme"), |p| p.as_path()))
         .join("**")
         .join("*.html");
     debug!("loading templates from {}", template_path.display());

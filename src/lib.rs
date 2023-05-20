@@ -4,7 +4,7 @@ pub mod generator;
 mod markdown;
 mod page;
 pub mod site;
-mod templates;
+mod theme;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

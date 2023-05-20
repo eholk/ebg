@@ -44,9 +44,15 @@ The remainder of the post comes afterwards.
 For Markdown files, these are converted to HTML, while HTML content is rendered unchanged into the site template.
 After rendering, site macros are expanded.
 
-## Templates
+## Themes
 
-Templates describe how page content should be formatted.
-EBG uses the [Tera Templating Engine][tera] and expects templates to be found in the `templates` directory relative to `Site.toml`.
+Themes describe how page content should be formatted.
+EBG uses the [Tera Templating Engine][tera] and expects templates to be found in the `theme` directory relative to `Site.toml`.
+This location can be overriden using the theme property in `Site.toml`.
+For example:
+
+```toml
+theme = "./themes/my_awesome_theme/"
+```
 
 [tera]: https://tera.netlify.app/

@@ -13,7 +13,7 @@ use tokio_stream::wrappers::ReadDirStream;
 use crate::{
     markdown::CodeFormatter,
     page::{Page, PageKind},
-    templates::create_template_engine,
+    theme::create_template_engine,
 };
 
 #[derive(Deserialize, Default)]
@@ -24,6 +24,7 @@ pub struct Config {
     pub author: Option<String>,
     pub subtitle: Option<String>,
     pub posts: Option<PathBuf>,
+    pub theme: Option<PathBuf>,
     #[serde(default)]
     pub content: Vec<PathBuf>,
     #[serde(default)]
@@ -79,7 +80,7 @@ impl Site {
             }
         }
 
-        let templates = create_template_engine(&root_dir).context("loading templates")?;
+        let templates = create_template_engine(&root_dir, &config).context("loading templates")?;
         let code_formatter = CodeFormatter::new();
 
         for page in pages.iter_mut() {
