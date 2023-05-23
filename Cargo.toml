@@ -11,6 +11,7 @@ description = "Eric's Blog Generator, a simple static site generator inspired by
 [dependencies]
 tokio = { version = "1.25.0", features = [
     "fs",
+    "io-util",
     "macros",
     "rt",
     "rt-multi-thread",
