@@ -13,6 +13,8 @@ use hyper::{
 use notify::{Event, RecursiveMode, Watcher};
 use tracing::{debug, error, info};
 
+use crate::cli::Command;
+
 #[derive(Args)]
 pub struct ServerOptions {
     #[command(flatten)]
@@ -20,6 +22,12 @@ pub struct ServerOptions {
 
     #[clap(default_value_t = 4000)]
     port: u16,
+}
+
+impl Command for ServerOptions {
+    async fn run(self) -> eyre::Result<()> {
+        serve(self).await
+    }
 }
 
 #[derive(Debug)]
