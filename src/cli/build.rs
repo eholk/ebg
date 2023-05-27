@@ -1,4 +1,7 @@
-use std::{sync::Mutex, time::Duration};
+use std::{
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 
 use ebg::{
     generator::{self, generate_site, Observer},
@@ -6,7 +9,7 @@ use ebg::{
     site::Site,
 };
 use eyre::Context;
-use indicatif::{MultiProgress, ProgressBar};
+use indicatif::{HumanDuration, MultiProgress, ProgressBar};
 use tracing::info;
 
 enum ProgressState {
@@ -81,6 +84,7 @@ impl super::Command for generator::Options {
     async fn run(self) -> eyre::Result<()> {
         info!("building blog from {}", self.path.display());
 
+        let start_time = Instant::now();
         let progress = BuildStatusViewer::new();
 
         progress.begin_load_site();
@@ -93,6 +97,10 @@ impl super::Command for generator::Options {
             .await
             .context("generating site")?;
         progress.site_complete(&site);
+
+        let elapsed = start_time.elapsed();
+
+        println!("Built site in {}", HumanDuration(elapsed));
 
         Ok(())
     }
