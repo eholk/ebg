@@ -2,7 +2,7 @@ use generator::GeneratorError;
 
 pub mod generator;
 mod markdown;
-mod page;
+pub mod page;
 pub mod site;
 mod theme;
 

@@ -77,7 +77,7 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
                     .unwrap();
 
             // FIXME: share this with the build code
-            generate_site(&site, &args)
+            generate_site(&site, &args, None)
                 .await
                 .context("generating site")
                 .unwrap();

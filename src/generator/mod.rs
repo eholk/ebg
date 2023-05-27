@@ -48,7 +48,15 @@ pub(crate) enum GeneratorError {
     CreateFile(PathBuf, #[source] io::Error),
 }
 
-pub async fn generate_site(site: &Site, options: &Options) -> super::Result<()> {
+pub trait Observer: Send + Sync {
+    fn begin_load_site(&self) {}
+    fn end_load_site(&self, _site: &Site) {}
+    fn begin_page(&self, _page: &Page) {}
+    fn end_page(&self, _page: &Page) {}
+    fn site_complete(&self, _site: &Site) {}
+}
+
+pub async fn generate_site(site: &Site, options: &Options, progress: Option<&dyn Observer>) -> super::Result<()> {
     // Create the destination directory
     tokio::fs::create_dir_all(&options.destination)
         .await
@@ -56,9 +64,15 @@ pub async fn generate_site(site: &Site, options: &Options) -> super::Result<()> 
 
     // Generate pages
     for post in site.all_pages() {
+        if let Some(progress) = progress {
+            progress.begin_page(post);
+        }
         generate_page(post, site, options)
             .await
             .map_err(|e| GeneratorError::GeneratePage(post.title().to_string(), e))?;
+        if let Some(progress) = progress {
+            progress.end_page(post);
+        }
     }
 
     // Copy raw files (those that don't need processing or generation)
@@ -166,7 +180,9 @@ async fn generate_page(page: &Page, site: &Site, options: &Options) -> eyre::Res
                 .join("")
                 + content;
             let mut templates = site.templates().clone();
-            let content = templates.render_str(&content_template, &context)?;
+            let content = templates
+                .render_str(&content_template, &context)
+                .context("importing site macros")?;
 
             context.insert("content", &content);
             site.templates()

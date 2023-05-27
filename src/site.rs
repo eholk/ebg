@@ -106,6 +106,10 @@ impl Site {
         self.pages.iter()
     }
 
+    pub fn num_pages(&self) -> usize {
+        self.pages.len()
+    }
+
     pub fn templates(&self) -> &Tera {
         &self.templates
     }
