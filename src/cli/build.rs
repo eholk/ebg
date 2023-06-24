@@ -1,10 +1,11 @@
 use std::{
+    path::PathBuf,
     sync::Mutex,
     time::{Duration, Instant},
 };
 
 use ebg::{
-    generator::{self, generate_site, Observer},
+    generator::{self, generate_site, Observer, Options},
     page::Page,
     site::Site,
 };
@@ -82,13 +83,14 @@ impl Observer for BuildStatusViewer {
 
 impl super::Command for generator::Options {
     async fn run(self) -> eyre::Result<()> {
-        info!("building blog from {}", self.path.display());
+        let path = find_site_root(&self).context("finding Site.toml")?;
+        info!("building blog from {}", path.display());
 
         let start_time = Instant::now();
         let progress = BuildStatusViewer::new();
 
         progress.begin_load_site();
-        let site = Site::from_directory(&self.path, self.unpublished)
+        let site = Site::from_directory(&path, self.unpublished)
             .await
             .context("loading site content")?;
         progress.end_load_site(&site);
@@ -103,5 +105,19 @@ impl super::Command for generator::Options {
         println!("Built site in {}", HumanDuration(elapsed));
 
         Ok(())
+    }
+}
+
+pub(crate) fn find_site_root(options: &Options) -> eyre::Result<PathBuf> {
+    let mut path = options.path.clone().unwrap_or(".".into());
+    loop {
+        if path.join("Site.toml").exists() {
+            return Ok(path.clone());
+        }
+
+        path = match path.parent() {
+            Some(parent) => parent.to_path_buf(),
+            None => eyre::bail!("could not find ebg.toml in any parent directory"),
+        };
     }
 }

@@ -13,7 +13,7 @@ use hyper::{
 use notify::{Event, RecursiveMode, Watcher};
 use tracing::{debug, error, info};
 
-use crate::cli::Command;
+use crate::cli::{Command, build::find_site_root};
 
 #[derive(Args)]
 pub struct ServerOptions {
@@ -60,8 +60,9 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
         Err(e) => error!("{e}"),
     })?;
 
+    let path = std::fs::canonicalize(&find_site_root(&options.build_opts)?)?;
     watcher.watch(
-        &std::fs::canonicalize(&options.build_opts.path)?,
+        &path,
         RecursiveMode::Recursive,
     )?;
 
@@ -71,7 +72,7 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
             let start = Instant::now();
 
             let site =
-                Site::from_directory(&options.build_opts.path, options.build_opts.unpublished)
+                Site::from_directory(&path, options.build_opts.unpublished)
                     .await
                     .context("loading site content")
                     .unwrap();
