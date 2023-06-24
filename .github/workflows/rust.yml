@@ -23,4 +23,7 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
   semver-checks:
-    uses: obi1kenobi/cargo-semver-checks-action@v2
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check semver
+      uses: obi1kenobi/cargo-semver-checks-action@v2
