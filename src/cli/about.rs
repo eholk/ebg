@@ -7,7 +7,7 @@ use super::Command;
 pub struct AboutOptions;
 
 impl Command for AboutOptions {
-    async fn run(self) -> eyre::Result<()> {
+    fn run(self) -> eyre::Result<()> {
         println!("# Syntax Highlighting #");
         println!();
         println!("## Languages ##");

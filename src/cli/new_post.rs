@@ -1,5 +1,6 @@
+use std::{fs::{create_dir, File}, io::Write};
+
 use clap::Parser;
-use tokio::io::AsyncWriteExt;
 use tracing::debug;
 
 #[derive(Parser)]
@@ -8,7 +9,7 @@ pub struct NewPostOptions {
 }
 
 impl super::Command for NewPostOptions {
-    async fn run(self) -> eyre::Result<()> {
+    fn run(self) -> eyre::Result<()> {
         // make sure there's a Site.toml in the current directory
         let root = std::env::current_dir()?;
         let site_toml = root.join("Site.toml");
@@ -22,7 +23,7 @@ impl super::Command for NewPostOptions {
         let posts_dir = root.join("_posts");
 
         if !posts_dir.exists() {
-            tokio::fs::create_dir(&posts_dir).await?;
+            create_dir(&posts_dir)?;
         }
 
         let post_filename = posts_dir.join(format!(
@@ -32,7 +33,7 @@ impl super::Command for NewPostOptions {
         ));
         debug!("creating new post at {}", post_filename.display());
 
-        let mut file = tokio::fs::File::create(&post_filename).await?;
+        let mut file = File::create(&post_filename)?;
         file.write_all(
             format!(
                 r#"---
@@ -45,8 +46,7 @@ published: false
                 title = self.title
             )
             .as_bytes(),
-        )
-        .await?;
+        )?;
 
         Ok(())
     }

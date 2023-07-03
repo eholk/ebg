@@ -33,10 +33,10 @@ async fn main() -> eyre::Result<()> {
         .init();
 
     match args {
-        Cli::Build(args) => args.run().await?,
-        Cli::NewPost(options) => options.run().await?,
-        Cli::Serve(options) => options.run().await?,
-        Cli::About(cmd) => cmd.run().await?,
+        Cli::Build(args) => args.run()?,
+        Cli::NewPost(options) => options.run()?,
+        Cli::Serve(options) => options.run()?,
+        Cli::About(cmd) => cmd.run()?,
     }
 
     Ok(())

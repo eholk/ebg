@@ -11,6 +11,7 @@ use ebg::{
 };
 use eyre::Context;
 use indicatif::{HumanDuration, MultiProgress, ProgressBar};
+use tokio::runtime::Runtime;
 use tracing::info;
 
 enum ProgressState {
@@ -82,29 +83,31 @@ impl Observer for BuildStatusViewer {
 }
 
 impl super::Command for generator::Options {
-    async fn run(self) -> eyre::Result<()> {
+    fn run(self) -> eyre::Result<()> {
         let path = find_site_root(&self).context("finding Site.toml")?;
         info!("building blog from {}", path.display());
 
         let start_time = Instant::now();
         let progress = BuildStatusViewer::new();
 
-        progress.begin_load_site();
-        let site = Site::from_directory(&path, self.unpublished)
-            .await
-            .context("loading site content")?;
-        progress.end_load_site(&site);
+        Runtime::new()?.block_on(async move {
+            progress.begin_load_site();
+            let site = Site::from_directory(&path, self.unpublished)
+                .await
+                .context("loading site content")?;
+            progress.end_load_site(&site);
 
-        generate_site(&site, &self, Some(&progress))
-            .await
-            .context("generating site")?;
-        progress.site_complete(&site);
+            generate_site(&site, &self, Some(&progress))
+                .await
+                .context("generating site")?;
+            progress.site_complete(&site);
 
-        let elapsed = start_time.elapsed();
+            let elapsed = start_time.elapsed();
 
-        println!("Built site in {}", HumanDuration(elapsed));
+            println!("Built site in {}", HumanDuration(elapsed));
 
-        Ok(())
+            Ok(())
+        })
     }
 }
 

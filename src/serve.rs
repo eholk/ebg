@@ -11,6 +11,7 @@ use hyper::{
     Body, Method, Request, Response, Server, StatusCode,
 };
 use notify::{Event, RecursiveMode, Watcher};
+use tokio::runtime::Runtime;
 use tracing::{debug, error, info};
 
 use crate::cli::{Command, build::find_site_root};
@@ -25,8 +26,9 @@ pub struct ServerOptions {
 }
 
 impl Command for ServerOptions {
-    async fn run(self) -> eyre::Result<()> {
-        serve(self).await
+    fn run(self) -> eyre::Result<()> {
+        let rt = Runtime::new()?;
+        rt.block_on(serve(self))
     }
 }
 
