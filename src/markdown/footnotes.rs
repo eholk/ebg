@@ -1,6 +1,7 @@
 //! Markdown filters for adjusting the way footnotes show up.
 
 use pulldown_cmark::{Event, Tag};
+use tracing::debug;
 
 /// Gathers all footnote definitions and pulls them to the end
 pub fn collect_footnotes<'a>(
@@ -59,7 +60,9 @@ where
                                 }
                                 Event::End(Tag::FootnoteDefinition(tag)) => {
                                     *in_footnote = false;
-                                    footnotes.push(Event::Html(format!(r##"<a href="#fnref:{tag}" class="footnote-backref">↩</a>"##).into()));
+                                    debug!("ending footnote, last event = {:?}", footnotes.last());
+                                    assert_eq!(footnotes.last(), Some(&Event::End(Tag::Paragraph)));
+                                    footnotes.insert(footnotes.len() - 1, Event::Html(format!(r##"<a href="#fnref:{tag}" class="footnote-backref">↩</a>"##).into()));
                                     footnotes.push(Event::End(Tag::FootnoteDefinition(tag)));
                                 }
                                 e => {
