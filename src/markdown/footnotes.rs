@@ -10,6 +10,7 @@ pub fn collect_footnotes<'a>(
         parser,
         footnotes: vec![],
         in_footnote: false,
+        count: 0,
     }
 }
 
@@ -18,6 +19,8 @@ enum CollectFootnotes<'a, I> {
         parser: I,
         footnotes: Vec<Event<'a>>,
         in_footnote: bool,
+        /// How many footnotes we've encountered so far.
+        count: usize,
     },
     Finishing {
         footnotes: std::vec::IntoIter<Event<'a>>,
@@ -37,31 +40,45 @@ where
                     parser,
                     footnotes,
                     in_footnote,
-                } => match parser.next() {
-                    Some(e) => match e {
-                        Event::Start(Tag::FootnoteDefinition(tag)) => {
-                            *in_footnote = true;
-                            footnotes.push(Event::Start(Tag::FootnoteDefinition(tag)));
-                        }
-                        Event::End(Tag::FootnoteDefinition(tag)) => {
-                            *in_footnote = false;
-                            footnotes.push(Event::End(Tag::FootnoteDefinition(tag)));
-                        }
-                        e => {
-                            if *in_footnote {
-                                footnotes.push(e)
-                            } else {
-                                return Some(e);
+                    count,
+                } => {
+                    match parser.next() {
+                        Some(e) => {
+                            match e {
+                                Event::FootnoteReference(tag) => {
+                                    // Manually render footnote here so we can add a backlink id
+                                    *count += 1;
+                                    let html = format!(
+                                        r##"<sup class="footnote-reference"><a href="#{tag}" id="fnref:{tag}">{count}</a></sup>"##,
+                                    );
+                                    return Some(Event::Html(html.into()));
+                                }
+                                Event::Start(Tag::FootnoteDefinition(tag)) => {
+                                    *in_footnote = true;
+                                    footnotes.push(Event::Start(Tag::FootnoteDefinition(tag)));
+                                }
+                                Event::End(Tag::FootnoteDefinition(tag)) => {
+                                    *in_footnote = false;
+                                    footnotes.push(Event::Html(format!(r##"<a href="#fnref:{tag}" class="footnote-backref">↩</a>"##).into()));
+                                    footnotes.push(Event::End(Tag::FootnoteDefinition(tag)));
+                                }
+                                e => {
+                                    if *in_footnote {
+                                        footnotes.push(e)
+                                    } else {
+                                        return Some(e);
+                                    }
+                                }
                             }
                         }
-                    },
-                    None => {
-                        *self = Self::Finishing {
-                            footnotes: std::mem::take(footnotes).into_iter(),
-                        };
-                        return Some(Event::Rule);
+                        None => {
+                            *self = Self::Finishing {
+                                footnotes: std::mem::take(footnotes).into_iter(),
+                            };
+                            return Some(Event::Rule);
+                        }
                     }
-                },
+                }
                 CollectFootnotes::Finishing { footnotes } => return footnotes.next(),
             }
         }

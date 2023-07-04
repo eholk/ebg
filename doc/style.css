@@ -3,3 +3,11 @@ a.header-anchor {
   font-size: 70%;
   vertical-align: top;
 }
+.footnote-definition {
+  font-size: 87%;
+}
+
+.footnote-definition-label {
+  float: left;
+  margin-right: 4px;
+}

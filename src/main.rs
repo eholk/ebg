@@ -21,8 +21,7 @@ enum Cli {
     About(AboutOptions),
 }
 
-#[tokio::main]
-async fn main() -> eyre::Result<()> {
+fn main() -> eyre::Result<()> {
     color_eyre::install()?;
 
     let args = Cli::parse();
