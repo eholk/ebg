@@ -1,6 +1,3 @@
-#![feature(async_fn_in_trait)]
-#![allow(incomplete_features)]
-
 use clap::Parser;
 use cli::{about::AboutOptions, new_post::NewPostOptions};
 use serve::ServerOptions;
