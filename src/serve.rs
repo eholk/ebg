@@ -21,7 +21,7 @@ pub struct ServerOptions {
     #[command(flatten)]
     build_opts: Options,
 
-    #[clap(default_value_t = 4000)]
+    #[clap(short, long, default_value_t = 4000)]
     port: u16,
 }
 
