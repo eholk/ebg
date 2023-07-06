@@ -24,3 +24,5 @@ jobs:
       run: cargo test --verbose
     - name: Check semver
       uses: obi1kenobi/cargo-semver-checks-action@v2
+    - name: Build docs
+      run: cargo run -- build doc
