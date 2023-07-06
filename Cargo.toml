@@ -9,35 +9,35 @@ description = "Eric's Blog Generator, a simple static site generator inspired by
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.25.0", features = [
+tokio = { version = "1.29.1", features = [
     "fs",
     "io-util",
     "macros",
     "rt",
     "rt-multi-thread",
 ] }
-chrono = { version = "0.4.23", features = ["serde"] }
-clap = { version = "4.1.4", features = ["derive"] }
+chrono = { version = "0.4.26", features = ["serde"] }
+clap = { version = "4.3.11", features = ["derive"] }
 eyre = "0.6.8"
-futures = "0.3.26"
+futures = "0.3.28"
 pulldown-cmark = "0.9.3"
-serde = { version = "1.0.152", features = ["derive"] }
-serde_yaml = "0.9.17"
-tokio-stream = { version = "0.1.11", features = ["fs"] }
+serde = { version = "1.0.166", features = ["derive"] }
+serde_yaml = "0.9.22"
+tokio-stream = { version = "0.1.14", features = ["fs"] }
 tracing = "0.1.37"
-tracing-subscriber = { version = "0.3.16", features = ["ansi", "env-filter"] }
-tera = "1.17.1"
-serde_json = "1.0.93"
+tracing-subscriber = { version = "0.3.17", features = ["ansi", "env-filter"] }
+tera = "1.19.0"
+serde_json = "1.0.100"
 async-walkdir = "0.2.0"
-futures-concurrency = "7.1.0"
+futures-concurrency = "7.3.0"
 pathdiff = "0.2.1"
 quick-xml = "0.27.1"
-toml = "0.7.2"
+toml = "0.7.6"
 syntect = "5.0.0"
-thiserror = "1.0.38"
-hyper = { version = "0.14.24", features = ["http1", "server", "tcp"] }
-notify = "5.1.0"
-bumpalo = "3.12.0"
+thiserror = "1.0.41"
+hyper = { version = "0.14.27", features = ["http1", "server", "tcp"] }
+notify = "5.2.0"
+bumpalo = "3.13.0"
 slug = "0.1.4"
-indicatif = "0.17.3"
+indicatif = "0.17.5"
 color-eyre = "0.6.2"
