@@ -14,7 +14,7 @@ use notify::{Event, RecursiveMode, Watcher};
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info};
 
-use crate::cli::{Command, build::find_site_root};
+use crate::cli::{build::find_site_root, Command};
 
 #[derive(Args)]
 pub struct ServerOptions {
@@ -63,21 +63,17 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
     })?;
 
     let path = std::fs::canonicalize(&find_site_root(&options.build_opts)?)?;
-    watcher.watch(
-        &path,
-        RecursiveMode::Recursive,
-    )?;
+    watcher.watch(&path, RecursiveMode::Recursive)?;
 
     // FIXME: Watch for file changes and rebuild the site if it changes.
     let generate = tokio::spawn(async move {
         loop {
             let start = Instant::now();
 
-            let site =
-                Site::from_directory(&path, options.build_opts.unpublished)
-                    .await
-                    .context("loading site content")
-                    .unwrap();
+            let site = Site::from_directory(&path, options.build_opts.unpublished)
+                .await
+                .context("loading site content")
+                .unwrap();
 
             // FIXME: share this with the build code
             generate_site(&site, &args, None)
@@ -121,12 +117,12 @@ async fn handle_request(req: Request<Body>, site: &Path) -> Result<Response<Body
         let path = site.join(Path::new(req.uri().path()).strip_prefix("/").unwrap());
         debug!("checking if `{}` exists", path.display());
         if path.is_file() {
-            Response::new(tokio::fs::read(path).await.unwrap().into())
+            serve_path(path.as_path()).await
         } else {
             let path = path.join("index.html");
             if path.exists() {
                 debug!("attempting to serve index path `{}`", path.display());
-                Response::new(tokio::fs::read(path).await.unwrap().into())
+                serve_path(path.as_path()).await
             } else {
                 debug!("`{}` not found, returning 404", path.display());
                 Response::builder()
@@ -142,6 +138,35 @@ async fn handle_request(req: Request<Body>, site: &Path) -> Result<Response<Body
     Ok(response)
 }
 
+async fn serve_path(path: &Path) -> Response<Body> {
+    let mut response = Response::builder();
+    if let Some(mime) = guess_mime_type_from_path(path) {
+        debug!("guessed mime type `{mime}`");
+        response = response.header("Content-Type", mime);
+    }
+    let data = tokio::fs::read(path).await.unwrap();
+    debug!("writing {} bytes", data.len());
+    response
+        .header("Content-Length", data.len())
+        .body(data.into())
+        .unwrap()
+}
+
+fn guess_mime_type_from_path(path: &Path) -> Option<&'static str> {
+    match path.extension()?.to_str()? {
+        "html" => Some("text/html"),
+        "svg" => Some("image/svg+xml"),
+        "woff2" => Some("font/woff2"),
+        "ttf" => Some("font/ttf"),
+        // FIXME: find a way to separate atom from a raw xml file
+        "xml" => Some("application/atom+xml"),
+        ext => {
+            debug!("no known mime type for extension `{ext}`");
+            None
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use std::{
@@ -151,7 +176,13 @@ mod test {
 
     use hyper::{body::to_bytes, Request, StatusCode};
 
-    use crate::serve::handle_request;
+    use crate::serve::{guess_mime_type_from_path, handle_request};
+
+    #[test]
+    fn test_mime_type() {
+        let path = Path::new("index.html");
+        assert_eq!(guess_mime_type_from_path(path), Some("text/html"));
+    }
 
     fn test_site() -> PathBuf {
         Path::new(".").join("test").join("data").join("html")
