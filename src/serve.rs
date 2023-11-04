@@ -5,12 +5,12 @@ use ebg::{
     generator::{generate_site, Options},
     site::Site,
 };
-use eyre::Context;
 use hyper::{
     service::{make_service_fn, service_fn},
     Body, Method, Request, Response, Server, StatusCode,
 };
 use notify::{Event, RecursiveMode, Watcher};
+use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info};
 
@@ -35,6 +35,20 @@ impl Command for ServerOptions {
 #[derive(Debug)]
 enum GeneratorMessage {
     Rebuild,
+}
+
+#[derive(Debug, Error)]
+enum ServerError {
+    #[error("could not find file to satisfy URI `{0}`")]
+    PathNotFound(hyper::http::uri::Uri),
+    #[error("error reading file contents")]
+    ReadContents(#[source] std::io::Error),
+    #[error("error building response body")]
+    ResponseBodyError(#[source] hyper::http::Error),
+    #[error("error stripping prefix from path")]
+    StripPrefixError(#[source] std::path::StripPrefixError),
+    #[error("unsupported method `{0}`")]
+    UnsupportedMethod(hyper::http::Method),
 }
 
 pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
@@ -70,24 +84,28 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
         loop {
             let start = Instant::now();
 
-            let site = Site::from_directory(&path, options.build_opts.unpublished)
-                .await
-                .context("loading site content")
-                .unwrap();
+            let site = match Site::from_directory(&path, options.build_opts.unpublished).await {
+                Ok(site) => site,
+                Err(e) => {
+                    error!("failed to load site directory: {e}");
+                    continue;
+                }
+            };
 
             // FIXME: share this with the build code
-            generate_site(&site, &args, None)
-                .await
-                .context("generating site")
-                .unwrap();
+            if let Err(e) = generate_site(&site, &args, None).await {
+                error!("failed to generate site: {e}");
+                continue;
+            }
 
             info!(
                 "Generating site took {:.3} seconds",
                 start.elapsed().as_secs_f32()
             );
 
-            match recv.recv().await.unwrap() {
-                GeneratorMessage::Rebuild => (),
+            match recv.recv().await {
+                Some(GeneratorMessage::Rebuild) => (),
+                None => error!("error receiving message"),
             }
         }
     });
@@ -99,7 +117,10 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
     Server::bind(&addr)
         .serve(make_service_fn(|_conn| async move {
             Ok::<_, Infallible>(service_fn(move |req| async move {
-                handle_request(req, serve_path).await
+                match handle_request(req, serve_path).await {
+                    Ok(response) => Ok(response),
+                    Err(e) => generate_error_response(e).await,
+                }
             }))
         }))
         .await?;
@@ -109,47 +130,50 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
     Ok(())
 }
 
-async fn handle_request(req: Request<Body>, site: &Path) -> Result<Response<Body>, Infallible> {
+async fn handle_request(req: Request<Body>, site: &Path) -> Result<Response<Body>, ServerError> {
     debug!(?req);
 
     let response = if req.method() == Method::GET {
         // FIXME: check the URI and find the right file to serve.
-        let path = site.join(Path::new(req.uri().path()).strip_prefix("/").unwrap());
+        let path = site.join(
+            Path::new(req.uri().path())
+                .strip_prefix("/")
+                .map_err(ServerError::StripPrefixError)?,
+        );
         debug!("checking if `{}` exists", path.display());
         if path.is_file() {
-            serve_path(path.as_path()).await
+            serve_path(path.as_path()).await?
         } else {
             let path = path.join("index.html");
             if path.exists() {
                 debug!("attempting to serve index path `{}`", path.display());
-                serve_path(path.as_path()).await
+                serve_path(path.as_path()).await?
             } else {
                 debug!("`{}` not found, returning 404", path.display());
-                Response::builder()
-                    .status(StatusCode::NOT_FOUND)
-                    .body("Not found".into())
-                    .unwrap()
+                return Err(ServerError::PathNotFound(req.uri().clone()));
             }
         }
     } else {
-        Response::new("Hello, World!".into())
+        return Err(ServerError::UnsupportedMethod(req.method().clone()));
     };
 
     Ok(response)
 }
 
-async fn serve_path(path: &Path) -> Response<Body> {
+async fn serve_path(path: &Path) -> Result<Response<Body>, ServerError> {
     let mut response = Response::builder();
     if let Some(mime) = guess_mime_type_from_path(path) {
         debug!("guessed mime type `{mime}`");
         response = response.header("Content-Type", mime);
     }
-    let data = tokio::fs::read(path).await.unwrap();
+    let data = tokio::fs::read(path)
+        .await
+        .map_err(ServerError::ReadContents)?;
     debug!("writing {} bytes", data.len());
     response
         .header("Content-Length", data.len())
         .body(data.into())
-        .unwrap()
+        .map_err(ServerError::ResponseBodyError)
 }
 
 fn guess_mime_type_from_path(path: &Path) -> Option<&'static str> {
@@ -167,6 +191,22 @@ fn guess_mime_type_from_path(path: &Path) -> Option<&'static str> {
     }
 }
 
+async fn generate_error_response(e: ServerError) -> Result<Response<Body>, Infallible> {
+    let body = format!("{e}");
+    let status = match e {
+        ServerError::PathNotFound(_) => StatusCode::NOT_FOUND,
+        ServerError::ResponseBodyError(_)
+        | ServerError::StripPrefixError(_)
+        | ServerError::ReadContents(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        ServerError::UnsupportedMethod(_) => StatusCode::METHOD_NOT_ALLOWED,
+    };
+    Ok(Response::builder()
+        .status(status)
+        .header("Content-Type", "text/plain")
+        .body(body.into())
+        .unwrap())
+}
+
 #[cfg(test)]
 mod test {
     use std::{
@@ -176,7 +216,7 @@ mod test {
 
     use hyper::{body::to_bytes, Request, StatusCode};
 
-    use crate::serve::{guess_mime_type_from_path, handle_request};
+    use crate::serve::{guess_mime_type_from_path, handle_request, ServerError};
 
     #[test]
     fn test_mime_type() {
@@ -250,26 +290,16 @@ mod test {
         Ok(())
     }
 
-    /// Make sure we can fetch the index of a directory
+    /// Make sure we report an error if we ask for a nonexistent file
     #[tokio::test]
     async fn not_found() -> eyre::Result<()> {
         let site = test_site();
 
         let req = Request::builder().uri("/not-found").body("".into())?;
 
-        let res = handle_request(req, &site).await?;
+        let res = handle_request(req, &site).await;
 
-        assert_eq!(res.status(), StatusCode::NOT_FOUND);
-
-        let expected = "Not found";
-        // Read the body but replace line endings to deal with platform differences.
-        let body = to_bytes(res.into_body())
-            .await?
-            .lines()
-            .map(Result::unwrap)
-            .collect::<Vec<_>>()
-            .join("\n");
-        assert_eq!(body, expected);
+        assert!(matches!(res, Err(ServerError::PathNotFound(_))));
 
         Ok(())
     }
