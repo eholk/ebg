@@ -11,7 +11,17 @@ mod cli;
 mod serve;
 
 #[derive(Parser)]
-enum Cli {
+struct Cli {
+    /// Print the version number
+    #[clap(long)]
+    version: bool,
+
+    #[clap(subcommand)]
+    command: Option<Commands>,
+}
+
+#[derive(Parser)]
+enum Commands {
     Build(Options),
     Serve(ServerOptions),
     NewPost(NewPostOptions),
@@ -28,11 +38,24 @@ fn main() -> eyre::Result<()> {
         .with(EnvFilter::from_env("EBG_LOG"))
         .init();
 
-    match args {
-        Cli::Build(args) => args.run()?,
-        Cli::NewPost(options) => options.run()?,
-        Cli::Serve(options) => options.run()?,
-        Cli::About(cmd) => cmd.run()?,
+    if args.version {
+        println!("ebg {}", env!("CARGO_PKG_VERSION"));
+        if args.command.is_none() {
+            return Ok(());
+        }
+    }
+
+    match args.command {
+        Some(Commands::Build(args)) => args.run()?,
+        Some(Commands::NewPost(options)) => options.run()?,
+        Some(Commands::Serve(options)) => options.run()?,
+        Some(Commands::About(cmd)) => cmd.run()?,
+        None => {
+            // Print out the help message since no command was given.
+            //
+            // FIXME: surely there's a better way to do this...
+            Cli::parse_from(["ebg", "--help"].iter());
+        }
     }
 
     Ok(())
