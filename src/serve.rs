@@ -179,9 +179,10 @@ async fn serve_path(path: &Path) -> Result<Response<Body>, ServerError> {
 fn guess_mime_type_from_path(path: &Path) -> Option<&'static str> {
     match path.extension()?.to_str()? {
         "html" => Some("text/html"),
+        "png" => Some("image/png"),
         "svg" => Some("image/svg+xml"),
-        "woff2" => Some("font/woff2"),
         "ttf" => Some("font/ttf"),
+        "woff2" => Some("font/woff2"),
         // FIXME: find a way to separate atom from a raw xml file
         "xml" => Some("application/atom+xml"),
         ext => {
