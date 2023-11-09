@@ -1,3 +1,17 @@
 {
-    "sarif-viewer.connectToGithubCodeScanning": "off"
+    "sarif-viewer.connectToGithubCodeScanning": "off",
+    "cSpell.words": [
+        "bumpalo",
+        "canonicalize",
+        "chrono",
+        "cmark",
+        "indicatif",
+        "Octopress",
+        "pathdiff",
+        "serde",
+        "syntect",
+        "tera",
+        "thiserror",
+        "walkdir"
+    ]
 }
