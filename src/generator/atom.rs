@@ -29,7 +29,7 @@ pub(crate) fn generate_atom(site: &Site, out: impl Write) -> std::result::Result
     writer
         .create_element("feed")
         .with_attribute(("xmlns", "http://www.w3.org/2005/Atom"))
-        .write_inner_content(|writer| {
+        .write_inner_content(|writer| -> Result<(), AtomError> {
             let atom_url = format!("{}/atom.xml", site.base_url());
 
             writer
@@ -72,7 +72,7 @@ pub(crate) fn generate_atom(site: &Site, out: impl Write) -> std::result::Result
             if let Some(author) = site.author() {
                 writer
                     .create_element("author")
-                    .write_inner_content(|writer| {
+                    .write_inner_content(|writer| -> Result<(), AtomError> {
                         writer
                             .create_element("name")
                             .write_text_content(BytesText::new(author))?;
@@ -87,7 +87,7 @@ pub(crate) fn generate_atom(site: &Site, out: impl Write) -> std::result::Result
                 let post_url = format!("{}/{}", site.base_url(), post.url());
                 writer
                     .create_element("entry")
-                    .write_inner_content(|writer| {
+                    .write_inner_content(|writer| -> Result<(), AtomError> {
                         writer
                             .create_element("title")
                             .with_attribute(("type", "html"))
@@ -124,7 +124,7 @@ pub(crate) fn generate_atom(site: &Site, out: impl Write) -> std::result::Result
                         if let Some(author) = site.author() {
                             writer
                                 .create_element("author")
-                                .write_inner_content(|writer| {
+                                .write_inner_content(|writer| -> Result<(), AtomError> {
                                     writer
                                         .create_element("name")
                                         .write_text_content(BytesText::new(author))?;

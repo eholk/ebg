@@ -9,6 +9,27 @@ description = "Eric's Blog Generator, a simple static site generator inspired by
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+async-walkdir = "0.2.0"
+bumpalo = "3.13.0"
+chrono = { version = "0.4.26", features = ["serde"] }
+clap = { version = "4.3.11", features = ["derive"] }
+color-eyre = "0.6.2"
+eyre = "0.6.8"
+futures = "0.3.29"
+futures-concurrency = "7.4.3"
+hyper = { version = "0.14.27", features = ["http1", "server", "tcp"] }
+indicatif = "0.17.5"
+notify = "6.1.1"
+pathdiff = "0.2.1"
+pulldown-cmark = "0.9.3"
+quick-xml = "0.31.0"
+serde = { version = "1.0.166", features = ["derive"] }
+serde_json = "1.0.100"
+serde_yaml = "0.9.22"
+slug = "0.1.5"
+syntect = "5.0.0"
+tera = "1.19.1"
+thiserror = "1.0.41"
 tokio = { version = "1.33.0", features = [
     "fs",
     "io-util",
@@ -16,28 +37,7 @@ tokio = { version = "1.33.0", features = [
     "rt",
     "rt-multi-thread",
 ] }
-chrono = { version = "0.4.26", features = ["serde"] }
-clap = { version = "4.3.11", features = ["derive"] }
-eyre = "0.6.8"
-futures = "0.3.29"
-pulldown-cmark = "0.9.3"
-serde = { version = "1.0.166", features = ["derive"] }
-serde_yaml = "0.9.22"
 tokio-stream = { version = "0.1.14", features = ["fs"] }
+toml = "0.7.6"
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["ansi", "env-filter"] }
-tera = "1.19.1"
-serde_json = "1.0.100"
-async-walkdir = "0.2.0"
-futures-concurrency = "7.4.3"
-pathdiff = "0.2.1"
-quick-xml = "0.29.0"
-toml = "0.7.6"
-syntect = "5.0.0"
-thiserror = "1.0.41"
-hyper = { version = "0.14.27", features = ["http1", "server", "tcp"] }
-notify = "6.1.1"
-bumpalo = "3.13.0"
-slug = "0.1.5"
-indicatif = "0.17.5"
-color-eyre = "0.6.2"
