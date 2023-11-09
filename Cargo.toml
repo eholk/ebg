@@ -38,6 +38,6 @@ thiserror = "1.0.41"
 hyper = { version = "0.14.27", features = ["http1", "server", "tcp"] }
 notify = "6.0.1"
 bumpalo = "3.13.0"
-slug = "0.1.4"
+slug = "0.1.5"
 indicatif = "0.17.5"
 color-eyre = "0.6.2"
