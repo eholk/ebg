@@ -113,7 +113,7 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
     // FIXME: we probably don't want to actually leak this...
     let serve_path = Box::leak(Box::new(options.build_opts.destination)).as_path();
 
-    info!("Listening on {addr}");
+    println!("Listening on http://{addr}");
     Server::bind(&addr)
         .serve(make_service_fn(|_conn| async move {
             Ok::<_, Infallible>(service_fn(move |req| async move {
