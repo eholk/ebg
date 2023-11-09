@@ -1,3 +1,5 @@
+//! Contains data structures that represent the full site.
+
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -81,19 +83,22 @@ impl Site {
         }
 
         let templates = create_template_engine(&root_dir, &config).context("loading templates")?;
-        let code_formatter = CodeFormatter::new();
 
-        for page in pages.iter_mut() {
-            page.render(&code_formatter);
-        }
-
-        Ok(Site {
+        let mut site = Site {
             config,
             root_dir,
             pages,
             raw_files,
             templates,
-        })
+        };
+
+        let code_formatter = CodeFormatter::new();
+
+        for page in site.pages.iter_mut() {
+            page.render(&site, &code_formatter);
+        }
+
+        Ok(site)
     }
 
     pub fn posts(&self) -> impl Iterator<Item = &Page> {
@@ -144,6 +149,15 @@ impl Site {
     pub fn config(&self) -> &Config {
         &self.config
     }
+
+    /// Finds a page given its source path
+    /// 
+    /// The path should be given relative to the site root.
+    pub fn find_page_by_source_path(&self, path: &Path) -> Option<&Page> {
+        self.pages
+            .iter()
+            .find(|page| page.source_path() == path)
+    }
 }
 
 async fn load_posts(
@@ -156,12 +170,12 @@ async fn load_posts(
     }
 
     let mut posts = vec![];
-    let mut dirstream = ReadDirStream::new(
+    let mut dir_stream = ReadDirStream::new(
         fs::read_dir(path)
             .await
             .context("could not read directory")?,
     );
-    while let Some(entry) = dirstream.next().await {
+    while let Some(entry) = dir_stream.next().await {
         let entry = entry.context("reading directory entry")?;
         let page = Page::from_file(entry.path(), root_dir)
             .await

@@ -56,7 +56,11 @@ pub trait Observer: Send + Sync {
     fn site_complete(&self, _site: &Site) {}
 }
 
-pub async fn generate_site(site: &Site, options: &Options, progress: Option<&dyn Observer>) -> super::Result<()> {
+pub async fn generate_site(
+    site: &Site,
+    options: &Options,
+    progress: Option<&dyn Observer>,
+) -> super::Result<()> {
     // Create the destination directory
     tokio::fs::create_dir_all(&options.destination)
         .await
@@ -209,6 +213,7 @@ mod test {
         generator::ToValue,
         markdown::CodeFormatter,
         page::{Page, SourceFormat},
+        site::Site,
     };
 
     /// Regression test for #12
@@ -226,7 +231,8 @@ this is *an excerpt*
 this is *also an excerpt*",
         );
 
-        page.render(&CodeFormatter::new());
+        let site = Site::default();
+        page.render(&site, &CodeFormatter::new());
 
         let value = page.value();
 

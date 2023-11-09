@@ -1,3 +1,5 @@
+//! Data structures representing a page.
+
 use std::{
     ffi::OsStr,
     ops::{Range, RangeFrom},
@@ -10,9 +12,9 @@ use pulldown_cmark::Parser;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 
-use crate::markdown::{
+use crate::{markdown::{
     collect_footnotes, extract_title_and_adjust_headers, CodeFormatter, HeadingAnchors,
-};
+}, site::Site};
 
 use self::parsing_helpers::{
     deserialize_comma_separated_list, deserialize_date, find_frontmatter_delimiter,
@@ -63,7 +65,12 @@ pub enum PageKind {
     Post,
 }
 
-pub struct Page {
+/// Represents the content of a page that can be trivially read from disk
+/// 
+/// This includes metadata that is often helpful in rendering other pages but
+/// notably does not include anything that requires the page itself to be
+/// rendered.
+pub struct PageSource {
     kind: PageKind,
     format: SourceFormat,
     source: PathBuf,
@@ -71,6 +78,12 @@ pub struct Page {
     frontmatter: Option<Range<usize>>,
     mainmatter: RangeFrom<usize>,
     parsed_frontmatter: Option<FrontMatter>,
+}
+
+/// Represents parts of the page that are computed during site generation.
+/// 
+/// Mainly this includes the rendered contents of the page.
+pub struct PageOutput {
     rendered_contents: Option<String>,
     /// The title that comes from the content if it is markdown and starts with an h1.
     ///
@@ -147,7 +160,8 @@ impl Page {
         }
     }
 
-    pub fn render(&mut self, code_formatter: &CodeFormatter) {
+    /// Renders the page to HTML and caches the contents so they can be quickly retrieved later.
+    pub fn render(&mut self, site: &Site, code_formatter: &CodeFormatter) {
         self.rendered_contents = Some(match self.format {
             SourceFormat::Html => self.contents[self.mainmatter.clone()].to_string(),
             SourceFormat::Markdown => {
@@ -253,6 +267,11 @@ impl Page {
         let (comment, _) = rest.split_once("-->")?;
         (comment.trim() == "MORE").then_some(excerpt)
     }
+
+    /// Returns the path to this page's source file relative to the site root.
+    pub fn source_path(&self) -> &Path {
+        self.source.as_path()
+    }
 }
 
 fn url_from_page_path(path: &Path) -> PathBuf {
@@ -339,7 +358,7 @@ fn render_markdown(contents: &str, code_formatter: &CodeFormatter) -> (String, O
 
 #[cfg(test)]
 mod test {
-    use crate::{markdown::CodeFormatter, page::SourceFormat};
+    use crate::{markdown::CodeFormatter, page::SourceFormat, site::Site};
 
     use super::{parse_filename, FrontMatter, Page};
     use chrono::{Local, NaiveDateTime, TimeZone, Utc};
@@ -630,7 +649,8 @@ this is *an excerpt*
 this is *not an excerpt*",
         );
 
-        page.render(&CodeFormatter::new());
+        let site = Site::default();
+        page.render(&site, &CodeFormatter::new());
 
         assert_eq!(
             page.rendered_excerpt(),
@@ -655,7 +675,8 @@ categories:
             SourceFormat::Markdown,
             SRC,
         );
-        post.render(&CodeFormatter::new());
+        let site = Site::default();
+        post.render(&site, &CodeFormatter::new());
         assert_eq!(post.title(), "This is the title");
     }
 }

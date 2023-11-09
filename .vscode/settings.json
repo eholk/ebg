@@ -6,6 +6,7 @@
         "chrono",
         "cmark",
         "indicatif",
+        "mainmatter",
         "Octopress",
         "pathdiff",
         "serde",

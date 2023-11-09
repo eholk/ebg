@@ -2,6 +2,8 @@
 //!
 //! These are implemented as iterators from markdown events to markdown events.
 
+use std::path::Path;
+
 use bumpalo::Bump;
 use pulldown_cmark::{Event, HeadingLevel, Tag};
 
@@ -11,6 +13,8 @@ mod footnotes;
 pub use code::CodeFormatter;
 pub use footnotes::collect_footnotes;
 use slug::slugify;
+
+use crate::site::Site;
 
 // pub fn trace_events<'a>(
 //     parser: impl Iterator<Item = Event<'a>>,
@@ -161,6 +165,27 @@ impl HeadingAnchors {
 
 fn heading_to_anchor(heading: &str) -> String {
     slugify(heading)
+}
+
+/// Finds links to source files and replaces them with links to the generated page
+pub fn adjust_relative_links<'a>(
+    markdown: impl Iterator<Item = Event<'a>>,
+    page_src: &'a Path,
+    site: &'a Site,
+) -> impl Iterator<Item = Event<'a>> {
+    let map_url = |url| url;
+
+    markdown.map(move |event| match event {
+        Event::Start(Tag::Link(link_type, url, title)) => {
+            let url = map_url(url);
+            Event::Start(Tag::Link(link_type, url.into(), title))
+        }
+        Event::End(Tag::Link(link_type, url, title)) => {
+            let url = map_url(url);
+            Event::End(Tag::Link(link_type, url.into(), title))
+        }
+        event => event,
+    })
 }
 
 #[cfg(test)]
