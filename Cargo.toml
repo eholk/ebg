@@ -9,7 +9,7 @@ description = "Eric's Blog Generator, a simple static site generator inspired by
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tokio = { version = "1.29.1", features = [
+tokio = { version = "1.33.0", features = [
     "fs",
     "io-util",
     "macros",
