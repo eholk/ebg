@@ -5,7 +5,7 @@
 use std::path::Path;
 
 use bumpalo::Bump;
-use pulldown_cmark::{Event, HeadingLevel, Tag};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag};
 
 mod code;
 mod footnotes;
@@ -14,7 +14,36 @@ pub use code::CodeFormatter;
 pub use footnotes::collect_footnotes;
 use slug::slugify;
 
-use crate::site::Site;
+use crate::index::SiteIndex;
+
+/// Renders a page's markdown contents
+///
+/// If this is a new-style post (i.e. one that starts with an h1 that indicates the title), the
+/// second field of the returned tuple will be the page's title extracted from the markdown
+/// contents.
+pub(super) fn render_markdown(
+    contents: &str,
+    code_formatter: &CodeFormatter,
+) -> (String, Option<String>) {
+    let parser = Parser::new_ext(
+        contents,
+        Options::ENABLE_FOOTNOTES
+            | Options::ENABLE_STRIKETHROUGH
+            | Options::ENABLE_TABLES
+            | Options::ENABLE_HEADING_ATTRIBUTES,
+    );
+
+    let (parser, title) = extract_title_and_adjust_headers(parser);
+    let mut anchors = HeadingAnchors::new();
+    let parser = anchors.add_anchors(parser);
+
+    let mut markdown_buffer = String::with_capacity(contents.len() * 2);
+    pulldown_cmark::html::push_html(
+        &mut markdown_buffer,
+        code_formatter.format_codeblocks(collect_footnotes(parser)),
+    );
+    (markdown_buffer, title)
+}
 
 // pub fn trace_events<'a>(
 //     parser: impl Iterator<Item = Event<'a>>,
@@ -171,7 +200,7 @@ fn heading_to_anchor(heading: &str) -> String {
 pub fn adjust_relative_links<'a>(
     markdown: impl Iterator<Item = Event<'a>>,
     page_src: &'a Path,
-    site: &'a Site,
+    site: &'a SiteIndex,
 ) -> impl Iterator<Item = Event<'a>> {
     let map_url = |url| url;
 

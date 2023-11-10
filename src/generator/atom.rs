@@ -9,7 +9,7 @@ use quick_xml::{
 };
 use thiserror::Error;
 
-use crate::site::Site;
+use crate::{index::{SiteMetaData, PageMetadata}, renderer::RenderedSite};
 
 #[derive(Error, Debug)]
 pub(crate) enum AtomError {
@@ -21,7 +21,10 @@ pub(crate) enum AtomError {
     ),
 }
 
-pub(crate) fn generate_atom(site: &Site, out: impl Write) -> std::result::Result<(), AtomError> {
+pub(crate) fn generate_atom(
+    site: &RenderedSite,
+    out: impl Write,
+) -> std::result::Result<(), AtomError> {
     let mut writer = Writer::new(out);
 
     writer.write_event(Decl(BytesDecl::new("1.0", Some("utf-8"), None)))?;
@@ -70,14 +73,14 @@ pub(crate) fn generate_atom(site: &Site, out: impl Write) -> std::result::Result
             }
 
             if let Some(author) = site.author() {
-                writer
-                    .create_element("author")
-                    .write_inner_content(|writer| -> Result<(), AtomError> {
+                writer.create_element("author").write_inner_content(
+                    |writer| -> Result<(), AtomError> {
                         writer
                             .create_element("name")
                             .write_text_content(BytesText::new(author))?;
                         Ok(())
-                    })?;
+                    },
+                )?;
             }
 
             let mut posts: Vec<_> = site.posts().collect();
@@ -85,9 +88,8 @@ pub(crate) fn generate_atom(site: &Site, out: impl Write) -> std::result::Result
 
             for post in posts.into_iter().take(10) {
                 let post_url = format!("{}/{}", site.base_url(), post.url());
-                writer
-                    .create_element("entry")
-                    .write_inner_content(|writer| -> Result<(), AtomError> {
+                writer.create_element("entry").write_inner_content(
+                    |writer| -> Result<(), AtomError> {
                         writer
                             .create_element("title")
                             .with_attribute(("type", "html"))
@@ -122,14 +124,14 @@ pub(crate) fn generate_atom(site: &Site, out: impl Write) -> std::result::Result
                             .write_cdata_content(BytesCData::new(post.rendered_contents()))?;
 
                         if let Some(author) = site.author() {
-                            writer
-                                .create_element("author")
-                                .write_inner_content(|writer| -> Result<(), AtomError> {
+                            writer.create_element("author").write_inner_content(
+                                |writer| -> Result<(), AtomError> {
                                     writer
                                         .create_element("name")
                                         .write_text_content(BytesText::new(author))?;
                                     Ok(())
-                                })?;
+                                },
+                            )?;
                         }
 
                         // FIXME: Add categories for posts that have them
@@ -142,7 +144,8 @@ pub(crate) fn generate_atom(site: &Site, out: impl Write) -> std::result::Result
                         }
 
                         Ok(())
-                    })?;
+                    },
+                )?;
             }
 
             Ok(())

@@ -6,11 +6,12 @@ use std::{
 use eyre::Context;
 use pathdiff::diff_paths;
 use serde_json::{json, Map, Value};
+use tera::Tera;
 use thiserror::Error;
 use tokio::fs;
 use tracing::debug;
 
-use crate::{page::Page, site::Site};
+use crate::index::{PageMetadata, PageSource, SiteIndex};
 use clap::Args;
 use clap::ValueHint::DirPath;
 
@@ -50,14 +51,19 @@ pub(crate) enum GeneratorError {
 
 pub trait Observer: Send + Sync {
     fn begin_load_site(&self) {}
-    fn end_load_site(&self, _site: &Site) {}
-    fn begin_page(&self, _page: &Page) {}
-    fn end_page(&self, _page: &Page) {}
-    fn site_complete(&self, _site: &Site) {}
+    fn end_load_site(&self, _site: &SiteIndex) {}
+    fn begin_page(&self, _page: &PageSource) {}
+    fn end_page(&self, _page: &PageSource) {}
+    fn site_complete(&self, _site: &SiteIndex) {}
+}
+
+/// Holds dynamic state and configuration needed to render a site.
+pub struct GeneratorContext {
+    templates: Tera,
 }
 
 pub async fn generate_site(
-    site: &Site,
+    site: &SiteIndex,
     options: &Options,
     progress: Option<&dyn Observer>,
 ) -> super::Result<()> {
@@ -121,7 +127,7 @@ trait ToValue {
     fn value(&self) -> Value;
 }
 
-impl ToValue for Page {
+impl ToValue for PageSource {
     fn value(&self) -> Value {
         let mut page = Map::new();
         page.insert("title".to_string(), json!(self.title()));
@@ -138,7 +144,7 @@ impl ToValue for Page {
     }
 }
 
-impl ToValue for Site {
+impl ToValue for SiteIndex {
     fn value(&self) -> Value {
         let mut site = [("url".to_string(), json!(self.base_url()))]
             .into_iter()
@@ -155,7 +161,7 @@ impl ToValue for Site {
     }
 }
 
-async fn generate_page(page: &Page, site: &Site, options: &Options) -> eyre::Result<()> {
+async fn generate_page(page: &PageSource, site: &SiteIndex, options: &Options) -> eyre::Result<()> {
     debug!(
         "post frontmatter:\n{}\n\nparsed as: {:#?}",
         page.raw_frontmatter().unwrap_or("None"),
@@ -205,40 +211,4 @@ async fn generate_page(page: &Page, site: &Site, options: &Options) -> eyre::Res
         .context("writing output")?;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod test {
-    use crate::{
-        generator::ToValue,
-        markdown::CodeFormatter,
-        page::{Page, SourceFormat},
-        site::Site,
-    };
-
-    /// Regression test for #12
-    #[test]
-    fn template_full_excerpt_when_missing_delimiter() {
-        let mut page = Page::from_string(
-            "2012-10-14-hello.md",
-            SourceFormat::Markdown,
-            "---
-title: Hello
-layout: page
----
-this is *an excerpt*
-
-this is *also an excerpt*",
-        );
-
-        let site = Site::default();
-        page.render(&site, &CodeFormatter::new());
-
-        let value = page.value();
-
-        assert_eq!(
-            value["excerpt"],
-            "<p>this is <em>an excerpt</em></p>\n<p>this is <em>also an excerpt</em></p>\n<hr />\n"
-        );
-    }
 }

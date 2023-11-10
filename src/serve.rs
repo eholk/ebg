@@ -3,7 +3,7 @@ use std::{convert::Infallible, net::SocketAddr, path::Path, time::Instant};
 use clap::Args;
 use ebg::{
     generator::{generate_site, Options},
-    site::Site,
+    site::SiteIndex,
 };
 use hyper::{
     service::{make_service_fn, service_fn},
@@ -84,7 +84,7 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
         loop {
             let start = Instant::now();
 
-            let site = match Site::from_directory(&path, options.build_opts.unpublished).await {
+            let site = match SiteIndex::from_directory(&path, options.build_opts.unpublished).await {
                 Ok(site) => site,
                 Err(e) => {
                     error!("failed to load site directory: {e}");

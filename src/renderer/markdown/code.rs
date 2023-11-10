@@ -146,7 +146,7 @@ fn parse_lang(s: &str) -> LangOptions<'_> {
 
 #[cfg(test)]
 mod test {
-    use crate::markdown::code::parse_lang;
+    use crate::renderer::markdown::code::parse_lang;
 
     #[test]
     fn parse_lang_options() -> eyre::Result<()> {

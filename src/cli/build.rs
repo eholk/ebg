@@ -6,8 +6,8 @@ use std::{
 
 use ebg::{
     generator::{self, generate_site, Observer, Options},
-    page::Page,
-    site::Site,
+    page::PageSource,
+    site::SiteIndex,
 };
 use eyre::Context;
 use indicatif::{HumanDuration, MultiProgress, ProgressBar};
@@ -46,7 +46,7 @@ impl Observer for BuildStatusViewer {
         *self.state.lock().unwrap() = ProgressState::LoadingSite(progress);
     }
 
-    fn end_load_site(&self, site: &Site) {
+    fn end_load_site(&self, site: &SiteIndex) {
         let mut state = self.state.lock().unwrap();
 
         // cleanup the old state
@@ -62,7 +62,7 @@ impl Observer for BuildStatusViewer {
         *state = ProgressState::BuildingSite { header, pages };
     }
 
-    fn end_page(&self, _page: &Page) {
+    fn end_page(&self, _page: &PageSource) {
         let state = self.state.lock().unwrap();
         if let ProgressState::BuildingSite { header, pages } = &*state {
             pages.inc(1);
@@ -70,7 +70,7 @@ impl Observer for BuildStatusViewer {
         }
     }
 
-    fn site_complete(&self, _site: &Site) {
+    fn site_complete(&self, _site: &SiteIndex) {
         let mut state = self.state.lock().unwrap();
         if let ProgressState::BuildingSite { header, pages } = &*state {
             pages.finish();
@@ -92,7 +92,7 @@ impl super::Command for generator::Options {
 
         Runtime::new()?.block_on(async move {
             progress.begin_load_site();
-            let site = Site::from_directory(&path, self.unpublished)
+            let site = SiteIndex::from_directory(&path, self.unpublished)
                 .await
                 .context("loading site content")?;
             progress.end_load_site(&site);

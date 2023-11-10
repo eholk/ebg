@@ -8,13 +8,8 @@ use std::{
 
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeZone, Utc};
 use eyre::{bail, WrapErr};
-use pulldown_cmark::Parser;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
-
-use crate::{markdown::{
-    collect_footnotes, extract_title_and_adjust_headers, CodeFormatter, HeadingAnchors,
-}, site::Site};
 
 use self::parsing_helpers::{
     deserialize_comma_separated_list, deserialize_date, find_frontmatter_delimiter,
@@ -66,7 +61,7 @@ pub enum PageKind {
 }
 
 /// Represents the content of a page that can be trivially read from disk
-/// 
+///
 /// This includes metadata that is often helpful in rendering other pages but
 /// notably does not include anything that requires the page itself to be
 /// rendered.
@@ -80,18 +75,7 @@ pub struct PageSource {
     parsed_frontmatter: Option<FrontMatter>,
 }
 
-/// Represents parts of the page that are computed during site generation.
-/// 
-/// Mainly this includes the rendered contents of the page.
-pub struct PageOutput {
-    rendered_contents: Option<String>,
-    /// The title that comes from the content if it is markdown and starts with an h1.
-    ///
-    /// Filled in by [Page::render].
-    content_title: Option<String>,
-}
-
-impl Page {
+impl PageSource {
     /// Reads the file `filename` into a `Page`
     ///
     /// The `root_dir` specifies the root directory for the site. This page will
@@ -155,22 +139,7 @@ impl Page {
             frontmatter,
             mainmatter,
             parsed_frontmatter,
-            rendered_contents: None,
-            content_title: None,
         }
-    }
-
-    /// Renders the page to HTML and caches the contents so they can be quickly retrieved later.
-    pub fn render(&mut self, site: &Site, code_formatter: &CodeFormatter) {
-        self.rendered_contents = Some(match self.format {
-            SourceFormat::Html => self.contents[self.mainmatter.clone()].to_string(),
-            SourceFormat::Markdown => {
-                let (contents, title) =
-                    render_markdown(&self.contents[self.mainmatter.clone()], code_formatter);
-                self.content_title = title;
-                contents
-            }
-        })
     }
 
     pub fn raw_frontmatter(&self) -> Option<&str> {
@@ -193,15 +162,10 @@ impl Page {
             .map(|frontmatter| frontmatter.layout.as_str())
     }
 
-    pub fn title(&self) -> &str {
-        if let Some(title) = &self.content_title {
-            return title;
-        }
-
-        match &self.parsed_frontmatter {
-            Some(frontmatter) => frontmatter.title.as_str(),
-            None => "unknown", // TODO: generate a title from the file name or some other means
-        }
+    /// Returns the title from the frontmatter, if one is given.
+    pub fn title(&self) -> Option<&str> {
+        self.parsed_frontmatter
+            .map(|frontmatter| frontmatter.title.as_str())
     }
 
     pub fn title_slug(&self) -> &str {
@@ -209,23 +173,43 @@ impl Page {
         slug
     }
 
+    pub fn source_format(&self) -> SourceFormat {
+        self.format
+    }
+
+    pub fn kind(&self) -> PageKind {
+        self.kind
+    }
+
+    pub fn is_post(&self) -> bool {
+        self.kind == PageKind::Post
+    }
+
+    pub fn published(&self) -> bool {
+        self.parsed_frontmatter
+            .as_ref()
+            .map(|front| front.published)
+            .unwrap_or(true)
+    }
+
+    /// Returns the path to this page's source file relative to the site root.
+    pub fn source_path(&self) -> &Path {
+        self.source.as_path()
+    }
+}
+
+pub trait PageMetadata {
+    fn url(&self) -> String; // TODO: return a URL type instead.
+
     /// Returns the date and time the post was published.
     ///
     /// If the data is specified in the frontmatter, that date will be used,
     /// otherwise the date will be inferred from the file name.
-    pub fn publish_date(&self) -> Option<Date> {
-        let from_filename = {
-            let (date, _, _) = parse_filename(&self.source).unwrap();
-            Some(date)
-        };
-        self.parsed_frontmatter
-            .as_ref()
-            .and_then(|frontmatter| frontmatter.date)
-            .or(from_filename)
-    }
+    fn publish_date(&self) -> Option<Date>;
+}
 
-    // TODO: return a URL type instead.
-    pub fn url(&self) -> String {
+impl PageMetadata for PageSource {
+    fn url(&self) -> String {
         match self.kind {
             PageKind::Post => match self.publish_date() {
                 Some(date) => Path::new("blog")
@@ -241,36 +225,15 @@ impl Page {
         .replace('\\', "/")
     }
 
-    pub fn source_format(&self) -> SourceFormat {
-        self.format
-    }
-
-    pub fn kind(&self) -> PageKind {
-        self.kind
-    }
-
-    pub fn published(&self) -> bool {
+    fn publish_date(&self) -> Option<Date> {
+        let from_filename = {
+            let (date, _, _) = parse_filename(&self.source).unwrap();
+            Some(date)
+        };
         self.parsed_frontmatter
             .as_ref()
-            .map(|front| front.published)
-            .unwrap_or(true)
-    }
-
-    pub fn rendered_contents(&self) -> &str {
-        self.rendered_contents
-            .as_ref()
-            .expect("must call render before getting rendered contents")
-    }
-
-    pub fn rendered_excerpt(&self) -> Option<&str> {
-        let (excerpt, rest) = self.rendered_contents().split_once("<!--")?;
-        let (comment, _) = rest.split_once("-->")?;
-        (comment.trim() == "MORE").then_some(excerpt)
-    }
-
-    /// Returns the path to this page's source file relative to the site root.
-    pub fn source_path(&self) -> &Path {
-        self.source.as_path()
+            .and_then(|frontmatter| frontmatter.date)
+            .or(from_filename)
     }
 }
 
@@ -330,37 +293,11 @@ fn parse_date_from_filename(filename: &str) -> Option<(Date, &str)> {
     ))
 }
 
-/// Renders a page's markdown contents
-///
-/// If this is a new-style post (i.e. one that starts with an h1 that indicates the title), the
-/// second field of the returned tuple will be the page's title extracted from the markdown
-/// contents.
-fn render_markdown(contents: &str, code_formatter: &CodeFormatter) -> (String, Option<String>) {
-    let parser = Parser::new_ext(
-        contents,
-        pulldown_cmark::Options::ENABLE_FOOTNOTES
-            | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
-            | pulldown_cmark::Options::ENABLE_TABLES
-            | pulldown_cmark::Options::ENABLE_HEADING_ATTRIBUTES,
-    );
-
-    let (parser, title) = extract_title_and_adjust_headers(parser);
-    let mut anchors = HeadingAnchors::new();
-    let parser = anchors.add_anchors(parser);
-
-    let mut markdown_buffer = String::with_capacity(contents.len() * 2);
-    pulldown_cmark::html::push_html(
-        &mut markdown_buffer,
-        code_formatter.format_codeblocks(collect_footnotes(parser)),
-    );
-    (markdown_buffer, title)
-}
-
 #[cfg(test)]
 mod test {
-    use crate::{markdown::CodeFormatter, page::SourceFormat, site::Site};
+    use crate::index::{page::PageMetadata, SourceFormat};
 
-    use super::{parse_filename, FrontMatter, Page};
+    use super::{parse_filename, FrontMatter, PageSource};
     use chrono::{Local, NaiveDateTime, TimeZone, Utc};
     use std::path::Path;
 
@@ -398,7 +335,7 @@ mod test {
 
     #[test]
     fn primitive_computing_post() {
-        let post = Page::from_string(
+        let post = PageSource::from_string(
             Path::new("_posts").join("2021-01-14-coming-soon-primitive-computing.md"),
             SourceFormat::Markdown,
             "---\nlayout: post
@@ -463,7 +400,7 @@ categories:
 ---
 Hello, world!
 "#;
-        let post = Page::from_string("hello.md", SourceFormat::Markdown, SRC);
+        let post = PageSource::from_string("hello.md", SourceFormat::Markdown, SRC);
         assert_eq!(
             post.raw_frontmatter(),
             Some(
@@ -490,7 +427,7 @@ categories:
 ---
 Hello, world!
 "#;
-        let post = Page::from_string(
+        let post = PageSource::from_string(
             "_posts/2012-01-07-hello-world.md",
             SourceFormat::Markdown,
             SRC,
@@ -507,7 +444,7 @@ title: "Hello, World!"
 ---
 Hello, world!
 "#;
-        let post = Page::from_string(
+        let post = PageSource::from_string(
             "_posts/2023-01-24-hello-world.md",
             SourceFormat::Markdown,
             SRC,
@@ -519,7 +456,7 @@ Hello, world!
     fn parse_contents_without_frontmatter() {
         const SRC: &str = r#"Hello, world!
 "#;
-        let post = Page::from_string("hello.md", SourceFormat::Markdown, SRC);
+        let post = PageSource::from_string("hello.md", SourceFormat::Markdown, SRC);
         assert_eq!(post.raw_frontmatter(), None);
         assert_eq!(post.mainmatter(), "Hello, world!\n");
     }
@@ -535,7 +472,7 @@ categories:
 
 Hello, world!
 "#;
-        let post = Page::from_string("hello.md", SourceFormat::Markdown, SRC);
+        let post = PageSource::from_string("hello.md", SourceFormat::Markdown, SRC);
         assert_eq!(post.raw_frontmatter(), None);
         assert_eq!(post.mainmatter(), SRC);
     }
@@ -543,7 +480,7 @@ Hello, world!
     #[test]
     fn parse_contents_with_crlf_frontmatter() {
         const SRC: &str = "---\r\nlayout: post\r\ntitle: \"Hello, World!\"\r\ndate: 2012-11-27 19:40\r\ncomments: true\r\ncategories:\r\n---\r\nHello, world!\r\n";
-        let post = Page::from_string("hello.md", SourceFormat::Markdown, SRC);
+        let post = PageSource::from_string("hello.md", SourceFormat::Markdown, SRC);
         assert_eq!(
             post.raw_frontmatter(),
             Some(
@@ -633,50 +570,5 @@ tags: tag1, tag2
         println!("frontmatter: {front:#?}");
         assert_eq!(front.tags, vec!["tag1".to_string(), "tag2".to_string()]);
         Ok(())
-    }
-
-    #[test]
-    fn rendered_excerpt() {
-        let mut page = Page::from_string(
-            "2012-10-14-hello.md",
-            SourceFormat::Markdown,
-            "---
-title: Hello
-layout: page
----
-this is *an excerpt*
-<!-- MORE -->
-this is *not an excerpt*",
-        );
-
-        let site = Site::default();
-        page.render(&site, &CodeFormatter::new());
-
-        assert_eq!(
-            page.rendered_excerpt(),
-            Some("<p>this is <em>an excerpt</em></p>\n")
-        );
-    }
-
-    #[test]
-    fn leading_h1_as_title() {
-        const SRC: &str = r#"---
-layout: post
-title: "Hello, World!"
-date: 2012-01-07 14:40
-comments: true
-categories:
----
-
-# This is the title
-"#;
-        let mut post = Page::from_string(
-            "_posts/2012-01-07-hello-world.md",
-            SourceFormat::Markdown,
-            SRC,
-        );
-        let site = Site::default();
-        post.render(&site, &CodeFormatter::new());
-        assert_eq!(post.title(), "This is the title");
     }
 }
