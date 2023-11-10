@@ -1,4 +1,4 @@
 title = "Eric's Blog Generator"
 theme = "templates"
 
-content = ["index.md", "style.css"]
+content = ["index.md", "style.css", "themes.md"]

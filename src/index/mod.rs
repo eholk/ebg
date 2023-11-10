@@ -1,3 +1,5 @@
+//! Contains data structures that represent the full site.
+
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
@@ -6,15 +8,12 @@ use std::{
 use eyre::WrapErr;
 use futures::StreamExt;
 use serde::Deserialize;
-use tera::Tera;
 use tokio::fs;
 use tokio_stream::wrappers::ReadDirStream;
 
-use crate::{
-    markdown::CodeFormatter,
-    page::{Page, PageKind},
-    theme::create_template_engine,
-};
+mod page;
+
+pub use page::{PageKind, PageMetadata, PageSource, SourceFormat};
 
 #[derive(Deserialize, Default)]
 pub struct Config {
@@ -31,16 +30,19 @@ pub struct Config {
     pub macros: HashMap<String, PathBuf>,
 }
 
+/// Holds what is essentially metadata about a site
+///
+/// This allows us to refer to the site as a whole during page rendering, which
+/// in turn enables things like resolving relative links.
 #[derive(Default)]
-pub struct Site {
+pub struct SiteIndex {
     config: Config,
     root_dir: PathBuf,
-    pages: Vec<Page>,
+    pages: Vec<PageSource>,
     raw_files: Vec<PathBuf>,
-    templates: Tera,
 }
 
-impl Site {
+impl SiteIndex {
     pub async fn from_directory(
         path: impl Into<PathBuf>,
         include_unpublished: bool,
@@ -68,7 +70,6 @@ impl Site {
         );
 
         for path in config.content.iter() {
-            #[allow(clippy::match_single_binding)]
             match load_directory(root_dir.join(path), &root_dir, include_unpublished)
                 .await
                 .with_context(|| format!("loading {}", path.display()))?
@@ -80,69 +81,88 @@ impl Site {
             }
         }
 
-        let templates = create_template_engine(&root_dir, &config).context("loading templates")?;
-        let code_formatter = CodeFormatter::new();
-
-        for page in pages.iter_mut() {
-            page.render(&code_formatter);
-        }
-
-        Ok(Site {
+        Ok(SiteIndex {
             config,
             root_dir,
             pages,
             raw_files,
-            templates,
         })
     }
 
-    pub fn posts(&self) -> impl Iterator<Item = &Page> {
+    pub fn posts(&self) -> impl Iterator<Item = &PageSource> {
         self.pages
             .iter()
             .filter(|post| post.kind() == PageKind::Post)
     }
 
-    pub fn all_pages(&self) -> impl Iterator<Item = &Page> {
+    pub fn all_pages(&self) -> impl Iterator<Item = &PageSource> {
         self.pages.iter()
     }
 
-    pub fn num_pages(&self) -> usize {
-        self.pages.len()
+    /// Finds a page given its source path
+    ///
+    /// The path should be given relative to the site root.
+    pub fn find_page_by_source_path(&self, path: &Path) -> Option<&PageSource> {
+        self.pages.iter().find(|page| page.source_path() == path)
     }
 
-    pub fn templates(&self) -> &Tera {
-        &self.templates
+    /// Adds a new page to the site
+    /// 
+    /// This generally shouldn't be needed since pages are loaded from the filesystem,
+    /// but it can be helpful in building mock sites for testing.
+    pub fn add_page(&mut self, page: PageSource) {
+        self.pages.push(page);
     }
+}
 
-    pub fn root_dir(&self) -> &PathBuf {
-        &self.root_dir
-    }
+/// Accessor methods for various kinds of site metadata
+pub trait SiteMetadata {
+    fn config(&self) -> &Config;
+    fn base_url(&self) -> &str; // FIXME: use a URL type
+    fn title(&self) -> &str;
+    fn subtitle(&self) -> Option<&str>;
+    fn author(&self) -> Option<&str>;
+    fn root_dir(&self) -> &PathBuf;
+    fn num_pages(&self) -> usize;
+    fn raw_files(&self) -> impl Iterator<Item = &Path>
+    where
+        Self: Sized;
+}
 
-    pub fn raw_files(&self) -> impl Iterator<Item = &Path> {
-        self.raw_files.iter().map(AsRef::as_ref)
-    }
-
-    pub fn base_url(&self) -> &str {
+impl SiteMetadata for SiteIndex {
+    fn base_url(&self) -> &str {
         match &self.config.url {
             Some(url) => url,
             None => "",
         }
     }
 
-    pub fn title(&self) -> &str {
+    fn title(&self) -> &str {
         &self.config.title
     }
 
-    pub fn subtitle(&self) -> Option<&str> {
+    fn subtitle(&self) -> Option<&str> {
         self.config.subtitle.as_deref()
     }
 
-    pub fn author(&self) -> Option<&str> {
+    fn author(&self) -> Option<&str> {
         self.config.author.as_deref()
     }
 
-    pub fn config(&self) -> &Config {
+    fn config(&self) -> &Config {
         &self.config
+    }
+
+    fn root_dir(&self) -> &PathBuf {
+        &self.root_dir
+    }
+
+    fn num_pages(&self) -> usize {
+        self.pages.len()
+    }
+
+    fn raw_files(&self) -> impl Iterator<Item = &Path> {
+        self.raw_files.iter().map(AsRef::as_ref)
     }
 }
 
@@ -150,20 +170,20 @@ async fn load_posts(
     path: &Path,
     root_dir: &Path,
     include_unpublished: bool,
-) -> eyre::Result<Vec<Page>> {
+) -> eyre::Result<Vec<PageSource>> {
     if !path.is_dir() {
         return Ok(vec![]);
     }
 
     let mut posts = vec![];
-    let mut dirstream = ReadDirStream::new(
+    let mut dir_stream = ReadDirStream::new(
         fs::read_dir(path)
             .await
             .context("could not read directory")?,
     );
-    while let Some(entry) = dirstream.next().await {
+    while let Some(entry) = dir_stream.next().await {
         let entry = entry.context("reading directory entry")?;
-        let page = Page::from_file(entry.path(), root_dir)
+        let page = PageSource::from_file(entry.path(), root_dir)
             .await
             .context("parsing post")?;
 
@@ -181,13 +201,13 @@ async fn load_directory(
     path: impl AsRef<Path>,
     root_dir: &Path,
     include_unpublished: bool,
-) -> eyre::Result<(Vec<Page>, Vec<PathBuf>)> {
+) -> eyre::Result<(Vec<PageSource>, Vec<PathBuf>)> {
     let path = path.as_ref();
     let mut pages = vec![];
     let mut raw_files = vec![];
 
     if path.is_file() {
-        if let Ok(page) = Page::from_file(path, root_dir).await {
+        if let Ok(page) = PageSource::from_file(path, root_dir).await {
             if page.published() || include_unpublished {
                 return Ok((vec![page], vec![]));
             } else {
@@ -207,7 +227,7 @@ async fn load_directory(
         }
 
         let filename = entry.path();
-        if let Ok(page) = Page::from_file(&filename, root_dir).await {
+        if let Ok(page) = PageSource::from_file(&filename, root_dir).await {
             if page.published() || include_unpublished {
                 pages.push(page)
             }

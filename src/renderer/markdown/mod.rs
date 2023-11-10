@@ -2,8 +2,13 @@
 //!
 //! These are implemented as iterators from markdown events to markdown events.
 
+use std::{
+    borrow::Borrow,
+    path::{Path, PathBuf},
+};
+
 use bumpalo::Bump;
-use pulldown_cmark::{Event, HeadingLevel, Tag};
+use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag};
 
 mod code;
 mod footnotes;
@@ -11,6 +16,45 @@ mod footnotes;
 pub use code::CodeFormatter;
 pub use footnotes::collect_footnotes;
 use slug::slugify;
+use tracing::debug;
+
+use crate::index::{PageMetadata, PageSource, SiteIndex, SiteMetadata};
+
+use super::RenderContext;
+
+/// Renders a page's markdown contents
+///
+/// If this is a new-style post (i.e. one that starts with an h1 that indicates the title), the
+/// second field of the returned tuple will be the page's title extracted from the markdown
+/// contents.
+pub(super) fn render_markdown(
+    source: &PageSource,
+    rcx: &RenderContext<'_>,
+) -> (String, Option<String>) {
+    let contents = source.mainmatter();
+    let parser = Parser::new_ext(
+        contents,
+        Options::ENABLE_FOOTNOTES
+            | Options::ENABLE_STRIKETHROUGH
+            | Options::ENABLE_TABLES
+            | Options::ENABLE_HEADING_ATTRIBUTES,
+    );
+
+    let (parser, title) = extract_title_and_adjust_headers(parser);
+
+    let parser = adjust_relative_links(parser, source, rcx);
+
+    let mut anchors = HeadingAnchors::new();
+    let parser = anchors.add_anchors(parser);
+
+    let mut markdown_buffer = String::with_capacity(contents.len() * 2);
+    pulldown_cmark::html::push_html(
+        &mut markdown_buffer,
+        rcx.code_formatter
+            .format_codeblocks(collect_footnotes(parser)),
+    );
+    (markdown_buffer, title)
+}
 
 // pub fn trace_events<'a>(
 //     parser: impl Iterator<Item = Event<'a>>,
@@ -161,6 +205,41 @@ impl HeadingAnchors {
 
 fn heading_to_anchor(heading: &str) -> String {
     slugify(heading)
+}
+
+/// Finds links to source files and replaces them with links to the generated page
+pub fn adjust_relative_links<'a>(
+    markdown: impl Iterator<Item = Event<'a>>,
+    page: &'a PageSource,
+    rcx: &'a RenderContext<'_>,
+) -> impl Iterator<Item = Event<'a>> {
+    let map_url = |url: &CowStr<'_>| {
+        let url = url.to_string();
+        let path = PathBuf::from(&url);
+        Some(if path.is_relative() {
+            debug!("found relative link to {}", path.display());
+            let path = page.source_path().parent()?.join(path);
+            debug!("mapped path to {}", path.display());
+            let page = rcx.site.find_page_by_source_path(&path)?;
+            let url = format!("{}/{}", rcx.site.base_url(), page.url());
+            debug!("linking to {url}");
+            url
+        } else {
+            url
+        })
+    };
+
+    markdown.map(move |event| match event {
+        Event::Start(Tag::Link(link_type, url, title)) => {
+            let url = map_url(&url).unwrap_or_else(|| url.to_string());
+            Event::Start(Tag::Link(link_type, url.into(), title))
+        }
+        Event::End(Tag::Link(link_type, url, title)) => {
+            let url = map_url(&url).unwrap_or_else(|| url.to_string());
+            Event::End(Tag::Link(link_type, url.into(), title))
+        }
+        event => event,
+    })
 }
 
 #[cfg(test)]

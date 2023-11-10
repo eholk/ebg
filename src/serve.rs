@@ -2,8 +2,8 @@ use std::{convert::Infallible, net::SocketAddr, path::Path, time::Instant};
 
 use clap::Args;
 use ebg::{
-    generator::{generate_site, Options},
-    site::Site,
+    generator::{GeneratorContext, Options},
+    index::SiteIndex,
 };
 use hyper::{
     service::{make_service_fn, service_fn},
@@ -84,7 +84,8 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
         loop {
             let start = Instant::now();
 
-            let site = match Site::from_directory(&path, options.build_opts.unpublished).await {
+            let site = match SiteIndex::from_directory(&path, options.build_opts.unpublished).await
+            {
                 Ok(site) => site,
                 Err(e) => {
                     error!("failed to load site directory: {e}");
@@ -92,8 +93,17 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
                 }
             };
 
+            let site = match site.render() {
+                Ok(site) => site,
+                Err(e) => {
+                    error!("failed to render site: {e}");
+                    continue;
+                }
+            };
+
             // FIXME: share this with the build code
-            if let Err(e) = generate_site(&site, &args, None).await {
+            let gcx = GeneratorContext::new(&site, &args).unwrap();
+            if let Err(e) = gcx.generate_site(&site).await {
                 error!("failed to generate site: {e}");
                 continue;
             }
@@ -115,14 +125,16 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
 
     println!("Listening on http://{addr}");
     Server::bind(&addr)
-        .serve(make_service_fn(|_conn| async move {
-            Ok::<_, Infallible>(service_fn(move |req| async move {
-                match handle_request(req, serve_path).await {
-                    Ok(response) => Ok(response),
-                    Err(e) => generate_error_response(e).await,
-                }
-            }))
-        }))
+        .serve(make_service_fn(
+            |_conn: &hyper::server::conn::AddrStream| async move {
+                Ok::<_, Infallible>(service_fn(move |req| async move {
+                    match handle_request(req, serve_path).await {
+                        Ok(response) => Ok(response),
+                        Err(e) => generate_error_response(e).await,
+                    }
+                }))
+            },
+        ))
         .await?;
 
     generate.await?;

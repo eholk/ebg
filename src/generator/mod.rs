@@ -6,17 +6,22 @@ use std::{
 use eyre::Context;
 use pathdiff::diff_paths;
 use serde_json::{json, Map, Value};
+use tera::Tera;
 use thiserror::Error;
 use tokio::fs;
 use tracing::debug;
 
-use crate::{page::Page, site::Site};
+use crate::{
+    index::{PageMetadata, SiteMetadata},
+    renderer::{RenderedPageRef, RenderedSite},
+};
 use clap::Args;
 use clap::ValueHint::DirPath;
 
-use self::atom::generate_atom;
+use self::{atom::generate_atom, theme::create_template_engine};
 
 mod atom;
+mod theme;
 
 #[derive(Args, Clone)]
 pub struct Options {
@@ -50,66 +55,139 @@ pub(crate) enum GeneratorError {
 
 pub trait Observer: Send + Sync {
     fn begin_load_site(&self) {}
-    fn end_load_site(&self, _site: &Site) {}
-    fn begin_page(&self, _page: &Page) {}
-    fn end_page(&self, _page: &Page) {}
-    fn site_complete(&self, _site: &Site) {}
+    fn end_load_site(&self, _site: &dyn SiteMetadata) {}
+    fn begin_page(&self, _page: &dyn PageMetadata) {}
+    fn end_page(&self, _page: &dyn PageMetadata) {}
+    fn site_complete(&self, _site: &dyn SiteMetadata) {}
 }
 
-pub async fn generate_site(site: &Site, options: &Options, progress: Option<&dyn Observer>) -> super::Result<()> {
-    // Create the destination directory
-    tokio::fs::create_dir_all(&options.destination)
-        .await
-        .map_err(|e| GeneratorError::CreateDestDir(options.destination.clone(), e))?;
+/// Holds dynamic state and configuration needed to render a site.
+pub struct GeneratorContext<'a> {
+    templates: Tera,
+    options: &'a Options,
+    progress: Option<&'a dyn Observer>,
+}
 
-    // Generate pages
-    for post in site.all_pages() {
-        if let Some(progress) = progress {
-            progress.begin_page(post);
-        }
-        generate_page(post, site, options)
-            .await
-            .map_err(|e| GeneratorError::GeneratePage(post.title().to_string(), e))?;
-        if let Some(progress) = progress {
-            progress.end_page(post);
-        }
+impl<'a> GeneratorContext<'a> {
+    pub fn new(site: &RenderedSite, options: &'a Options) -> Result<Self, eyre::Error> {
+        let templates = create_template_engine(site.root_dir(), site.config())?;
+        Ok(Self {
+            templates,
+            options,
+            progress: None,
+        })
     }
 
-    // Copy raw files (those that don't need processing or generation)
-    for file in site.raw_files() {
-        debug!(
-            "copying from {}, root {}",
-            file.display(),
-            site.root_dir().display()
-        );
-        let Some(relative_dest) = diff_paths(file, site.root_dir()) else {
-            return Err(GeneratorError::ComputeRelativePath(file.into()))?;
-        };
-        let dest = options.destination.join(relative_dest);
+    pub fn with_progress(mut self, progress: &'a dyn Observer) -> Self {
+        self.progress = Some(progress);
+        self
+    }
 
-        if let Some(parent) = dest.parent() {
-            fs::create_dir_all(parent)
+    pub async fn generate_site(&self, site: &RenderedSite<'_>) -> super::Result<()> {
+        // Create the destination directory
+        tokio::fs::create_dir_all(&self.options.destination)
+            .await
+            .map_err(|e| GeneratorError::CreateDestDir(self.options.destination.clone(), e))?;
+
+        // Generate pages
+        for post in site.all_pages() {
+            if let Some(progress) = self.progress {
+                progress.begin_page(&post);
+            }
+            self.generate_page(post, site)
                 .await
-                .map_err(|e| GeneratorError::CreateDestDir(parent.into(), e))?;
+                .map_err(|e| GeneratorError::GeneratePage(post.title().to_string(), e))?;
+            if let Some(progress) = self.progress {
+                progress.end_page(&post);
+            }
         }
 
-        fs::copy(file, &dest)
-            .await
-            .map_err(|e| GeneratorError::Copy(file.into(), dest, e))?;
+        // Copy raw files (those that don't need processing or generation)
+        for file in site.raw_files() {
+            debug!(
+                "copying from {}, root {}",
+                file.display(),
+                site.root_dir().display()
+            );
+            let Some(relative_dest) = diff_paths(file, site.root_dir()) else {
+                return Err(GeneratorError::ComputeRelativePath(file.into()))?;
+            };
+            let dest = self.options.destination.join(relative_dest);
+
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| GeneratorError::CreateDestDir(parent.into(), e))?;
+            }
+
+            fs::copy(file, &dest)
+                .await
+                .map_err(|e| GeneratorError::Copy(file.into(), dest, e))?;
+        }
+
+        // Generate the atom feed
+        //
+        // FIXME: this is only relevant if we have posts. Maybe it should have an option to disable it
+        // in the site config?
+        generate_atom(
+            site,
+            std::fs::File::create(self.options.destination.join("atom.xml"))
+                .map_err(|e| GeneratorError::CreateFile("atom.xml".into(), e))?,
+        )
+        .map_err(GeneratorError::AtomError)?;
+
+        Ok(())
     }
 
-    // Generate the atom feed
-    //
-    // FIXME: this is only relevant if we have posts. Maybe it should have an option to disable it
-    // in the site config?
-    generate_atom(
-        site,
-        std::fs::File::create(options.destination.join("atom.xml"))
-            .map_err(|e| GeneratorError::CreateFile("atom.xml".into(), e))?,
-    )
-    .map_err(GeneratorError::AtomError)?;
+    async fn generate_page(
+        &self,
+        page: RenderedPageRef<'_>,
+        site: &RenderedSite<'_>,
+    ) -> eyre::Result<()> {
+        let dest = self.options.destination.join(page.url()).join("index.html");
 
-    Ok(())
+        debug!("destination path: {}", dest.display());
+
+        let content = page.rendered_contents();
+
+        debug!("post template: {:?}", page.template());
+        let content = match page.template() {
+            Some(template) => {
+                let mut context = tera::Context::new();
+                context.insert("site", &site.value());
+                context.insert("page", &page.value());
+
+                let content_template = site
+                    .config()
+                    .macros
+                    .iter()
+                    .map(|(name, path)| format!("{{% import \"{}\" as {name} %}}", path.display()))
+                    .collect::<Vec<_>>()
+                    .join("")
+                    + content;
+                let mut templates = self.templates.clone();
+                let content = templates
+                    .render_str(&content_template, &context)
+                    .context("importing site macros")?;
+
+                context.insert("content", &content);
+                self.templates
+                    .render(&format!("{template}.html"), &context)
+                    .context("rendering template")?
+            }
+            None => content.to_string(),
+        };
+
+        tokio::fs::create_dir_all(dest.parent().unwrap())
+            .await
+            .context("creating destination directory")?;
+
+        tokio::fs::write(dest, content)
+            .await
+            .context("writing output")?;
+
+        Ok(())
+    }
 }
 
 /// Converts an object into a format that can be passed to a Tera template
@@ -117,7 +195,7 @@ trait ToValue {
     fn value(&self) -> Value;
 }
 
-impl ToValue for Page {
+impl ToValue for RenderedPageRef<'_> {
     fn value(&self) -> Value {
         let mut page = Map::new();
         page.insert("title".to_string(), json!(self.title()));
@@ -134,7 +212,7 @@ impl ToValue for Page {
     }
 }
 
-impl ToValue for Site {
+impl ToValue for RenderedSite<'_> {
     fn value(&self) -> Value {
         let mut site = [("url".to_string(), json!(self.base_url()))]
             .into_iter()
@@ -145,76 +223,28 @@ impl ToValue for Site {
 
         site.insert(
             "posts".to_string(),
-            json!(posts.into_iter().map(ToValue::value).collect::<Vec<_>>()),
+            json!(posts
+                .into_iter()
+                .map(|post| post.value())
+                .collect::<Vec<_>>()),
         );
         site.into()
     }
 }
 
-async fn generate_page(page: &Page, site: &Site, options: &Options) -> eyre::Result<()> {
-    debug!(
-        "post frontmatter:\n{}\n\nparsed as: {:#?}",
-        page.raw_frontmatter().unwrap_or("None"),
-        page.frontmatter(),
-    );
-
-    let dest = options.destination.join(page.url()).join("index.html");
-
-    debug!("destination path: {}", dest.display());
-
-    let content = page.rendered_contents();
-
-    debug!("post template: {:?}", page.template());
-    let content = match page.template() {
-        Some(template) => {
-            let mut context = tera::Context::new();
-            context.insert("site", &site.value());
-            context.insert("page", &page.value());
-
-            let content_template = site
-                .config()
-                .macros
-                .iter()
-                .map(|(name, path)| format!("{{% import \"{}\" as {name} %}}", path.display()))
-                .collect::<Vec<_>>()
-                .join("")
-                + content;
-            let mut templates = site.templates().clone();
-            let content = templates
-                .render_str(&content_template, &context)
-                .context("importing site macros")?;
-
-            context.insert("content", &content);
-            site.templates()
-                .render(&format!("{template}.html"), &context)
-                .context("rendering template")?
-        }
-        None => content.to_string(),
-    };
-
-    tokio::fs::create_dir_all(dest.parent().unwrap())
-        .await
-        .context("creating destination directory")?;
-
-    tokio::fs::write(dest, content)
-        .await
-        .context("writing output")?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod test {
     use crate::{
-        generator::ToValue,
-        markdown::CodeFormatter,
-        page::{Page, SourceFormat},
+        index::{PageSource, SiteIndex, SourceFormat},
+        renderer::{CodeFormatter, RenderContext, RenderSource, RenderedPageRef},
     };
+
+    use super::ToValue;
 
     /// Regression test for #12
     #[test]
-    fn template_full_excerpt_when_missing_delimiter() {
-        let mut page = Page::from_string(
+    fn template_full_excerpt_when_missing_delimiter() -> eyre::Result<()> {
+        let page = PageSource::from_string(
             "2012-10-14-hello.md",
             SourceFormat::Markdown,
             "---
@@ -226,13 +256,18 @@ this is *an excerpt*
 this is *also an excerpt*",
         );
 
-        page.render(&CodeFormatter::new());
-
-        let value = page.value();
+        let site = SiteIndex::default();
+        let fmt = CodeFormatter::new();
+        let rcx = RenderContext::new(&site, &fmt);
+        let rendered_page = page.render(&rcx)?;
+        let page = RenderedPageRef::new(&page, &rendered_page);
+        let page = page.value();
 
         assert_eq!(
-            value["excerpt"],
+            page["excerpt"],
             "<p>this is <em>an excerpt</em></p>\n<p>this is <em>also an excerpt</em></p>\n<hr />\n"
         );
+
+        Ok(())
     }
 }
