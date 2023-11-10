@@ -99,22 +99,6 @@ impl SiteIndex {
         self.pages.iter()
     }
 
-    pub fn num_pages(&self) -> usize {
-        self.pages.len()
-    }
-
-    pub fn root_dir(&self) -> &PathBuf {
-        &self.root_dir
-    }
-
-    pub fn raw_files(&self) -> impl Iterator<Item = &Path> {
-        self.raw_files.iter().map(AsRef::as_ref)
-    }
-
-    pub fn config(&self) -> &Config {
-        &self.config
-    }
-
     /// Finds a page given its source path
     ///
     /// The path should be given relative to the site root.
@@ -124,14 +108,20 @@ impl SiteIndex {
 }
 
 /// Accessor methods for various kinds of site metadata
-pub trait SiteMetaData {
+pub trait SiteMetadata {
+    fn config(&self) -> &Config;
     fn base_url(&self) -> &str; // FIXME: use a URL type
     fn title(&self) -> &str;
     fn subtitle(&self) -> Option<&str>;
     fn author(&self) -> Option<&str>;
+    fn root_dir(&self) -> &PathBuf;
+    fn num_pages(&self) -> usize;
+    fn raw_files(&self) -> impl Iterator<Item = &Path>
+    where
+        Self: Sized;
 }
 
-impl SiteMetaData for SiteIndex {
+impl SiteMetadata for SiteIndex {
     fn base_url(&self) -> &str {
         match &self.config.url {
             Some(url) => url,
@@ -149,6 +139,22 @@ impl SiteMetaData for SiteIndex {
 
     fn author(&self) -> Option<&str> {
         self.config.author.as_deref()
+    }
+
+    fn config(&self) -> &Config {
+        &self.config
+    }
+
+    fn root_dir(&self) -> &PathBuf {
+        &self.root_dir
+    }
+
+    fn num_pages(&self) -> usize {
+        self.pages.len()
+    }
+
+    fn raw_files(&self) -> impl Iterator<Item = &Path> {
+        self.raw_files.iter().map(AsRef::as_ref)
     }
 }
 

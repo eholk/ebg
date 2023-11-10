@@ -9,7 +9,10 @@ use quick_xml::{
 };
 use thiserror::Error;
 
-use crate::{index::{SiteMetaData, PageMetadata}, renderer::RenderedSite};
+use crate::{
+    index::{PageMetadata, SiteMetadata},
+    renderer::RenderedSite,
+};
 
 #[derive(Error, Debug)]
 pub(crate) enum AtomError {

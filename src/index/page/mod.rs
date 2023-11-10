@@ -156,15 +156,9 @@ impl PageSource {
         &self.contents[self.mainmatter.clone()]
     }
 
-    pub fn template(&self) -> Option<&str> {
-        self.parsed_frontmatter
-            .as_ref()
-            .map(|frontmatter| frontmatter.layout.as_str())
-    }
-
     /// Returns the title from the frontmatter, if one is given.
     pub fn title(&self) -> Option<&str> {
-        self.parsed_frontmatter
+        self.frontmatter()
             .map(|frontmatter| frontmatter.title.as_str())
     }
 
@@ -206,6 +200,9 @@ pub trait PageMetadata {
     /// If the data is specified in the frontmatter, that date will be used,
     /// otherwise the date will be inferred from the file name.
     fn publish_date(&self) -> Option<Date>;
+
+    /// Returns the name of the template that should be used with this page.
+    fn template(&self) -> Option<&str>;
 }
 
 impl PageMetadata for PageSource {
@@ -234,6 +231,12 @@ impl PageMetadata for PageSource {
             .as_ref()
             .and_then(|frontmatter| frontmatter.date)
             .or(from_filename)
+    }
+
+    fn template(&self) -> Option<&str> {
+        self.parsed_frontmatter
+            .as_ref()
+            .map(|frontmatter| frontmatter.layout.as_str())
     }
 }
 

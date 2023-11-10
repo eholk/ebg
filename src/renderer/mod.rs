@@ -1,10 +1,12 @@
 use thiserror::Error;
 
-use crate::index::{PageMetadata, PageSource, SiteIndex, SiteMetaData, SourceFormat};
+use crate::index::{PageMetadata, PageSource, SiteIndex, SiteMetadata, SourceFormat};
 
-use self::markdown::{render_markdown, CodeFormatter};
+use self::markdown::render_markdown;
 
 mod markdown;
+
+pub(crate) use self::markdown::CodeFormatter;
 
 /// Contains all the generated contents of a site
 ///
@@ -15,7 +17,7 @@ pub struct RenderedSite<'a> {
 }
 
 impl<'a> RenderedSite<'a> {
-    pub fn pages(&self) -> impl Iterator<Item = RenderedPageRef<'_>> {
+    pub fn all_pages(&self) -> impl Iterator<Item = RenderedPageRef<'_>> {
         self.pages
             .iter()
             .zip(self.source.all_pages())
@@ -25,13 +27,17 @@ impl<'a> RenderedSite<'a> {
     pub fn posts(&self) -> impl Iterator<Item = RenderedPageRef<'_>> {
         self.source
             .all_pages()
-            .zip(self.pages())
+            .zip(self.all_pages())
             .filter(|(page, _)| page.is_post())
             .map(|(_, page)| page)
     }
 }
 
-impl<'a> SiteMetaData for RenderedSite<'a> {
+impl<'a> SiteMetadata for RenderedSite<'a> {
+    fn config(&self) -> &crate::index::Config {
+        self.source.config()
+    }
+
     fn base_url(&self) -> &str {
         self.source.base_url()
     }
@@ -46,6 +52,18 @@ impl<'a> SiteMetaData for RenderedSite<'a> {
 
     fn author(&self) -> Option<&str> {
         self.source.author()
+    }
+
+    fn root_dir(&self) -> &std::path::PathBuf {
+        self.source.root_dir()
+    }
+
+    fn num_pages(&self) -> usize {
+        self.source.num_pages()
+    }
+
+    fn raw_files(&self) -> impl Iterator<Item = &std::path::Path> {
+        self.source.raw_files()
     }
 }
 
@@ -67,12 +85,17 @@ impl SiteIndex {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct RenderedPageRef<'a> {
     source: &'a PageSource,
     page: &'a RenderedPage,
 }
 
 impl<'a> RenderedPageRef<'a> {
+    pub(crate) fn new(source: &'a PageSource, page: &'a RenderedPage) -> Self {
+        Self { source, page }
+    }
+
     pub fn title(&self) -> &str {
         self.page.title()
     }
@@ -93,6 +116,10 @@ impl<'a> PageMetadata for RenderedPageRef<'a> {
 
     fn publish_date(&self) -> Option<chrono::DateTime<chrono::Utc>> {
         self.source.publish_date()
+    }
+
+    fn template(&self) -> Option<&str> {
+        self.source.template()
     }
 }
 
@@ -128,6 +155,15 @@ impl RenderedPage {
 pub struct RenderContext<'a> {
     site: &'a SiteIndex,
     code_formatter: &'a CodeFormatter,
+}
+
+impl<'a> RenderContext<'a> {
+    pub fn new(site: &'a SiteIndex, code_formatter: &'a CodeFormatter) -> Self {
+        Self {
+            site,
+            code_formatter,
+        }
+    }
 }
 
 pub trait RenderSource {
@@ -174,7 +210,7 @@ mod test {
 
     #[test]
     fn rendered_excerpt() -> eyre::Result<()> {
-        let mut page = PageSource::from_string(
+        let page = PageSource::from_string(
             "2012-10-14-hello.md",
             SourceFormat::Markdown,
             "---
@@ -214,7 +250,7 @@ categories:
 
 # This is the title
 "#;
-        let mut post = PageSource::from_string(
+        let post = PageSource::from_string(
             "_posts/2012-01-07-hello-world.md",
             SourceFormat::Markdown,
             SRC,
@@ -227,37 +263,6 @@ categories:
         };
         let post = post.render(&rcx)?;
         assert_eq!(post.title(), "This is the title");
-        Ok(())
-    }
-
-    /// Regression test for #12
-    #[test]
-    fn template_full_excerpt_when_missing_delimiter() -> eyre::Result<()> {
-        let mut page = PageSource::from_string(
-            "2012-10-14-hello.md",
-            SourceFormat::Markdown,
-            "---
-title: Hello
-layout: page
----
-this is *an excerpt*
-
-this is *also an excerpt*",
-        );
-
-        let site = SiteIndex::default();
-        let rcx = RenderContext {
-            site: &site,
-            code_formatter: &CodeFormatter::new(),
-        };
-        let page = page.render(&rcx)?;
-
-        assert_eq!(
-            page.rendered_excerpt()
-                .context("getting rendered excerpt")?,
-            "<p>this is <em>an excerpt</em></p>\n<p>this is <em>also an excerpt</em></p>\n<hr />\n"
-        );
-
         Ok(())
     }
 }

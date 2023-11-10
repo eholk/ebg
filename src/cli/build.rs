@@ -5,9 +5,8 @@ use std::{
 };
 
 use ebg::{
-    generator::{self, generate_site, Observer, Options},
-    page::PageSource,
-    site::SiteIndex,
+    generator::{self, GeneratorContext, Observer, Options},
+    index::{PageMetadata, SiteIndex, SiteMetadata},
 };
 use eyre::Context;
 use indicatif::{HumanDuration, MultiProgress, ProgressBar};
@@ -46,7 +45,7 @@ impl Observer for BuildStatusViewer {
         *self.state.lock().unwrap() = ProgressState::LoadingSite(progress);
     }
 
-    fn end_load_site(&self, site: &SiteIndex) {
+    fn end_load_site(&self, site: &dyn SiteMetadata) {
         let mut state = self.state.lock().unwrap();
 
         // cleanup the old state
@@ -62,7 +61,7 @@ impl Observer for BuildStatusViewer {
         *state = ProgressState::BuildingSite { header, pages };
     }
 
-    fn end_page(&self, _page: &PageSource) {
+    fn end_page(&self, _page: &dyn PageMetadata) {
         let state = self.state.lock().unwrap();
         if let ProgressState::BuildingSite { header, pages } = &*state {
             pages.inc(1);
@@ -70,7 +69,7 @@ impl Observer for BuildStatusViewer {
         }
     }
 
-    fn site_complete(&self, _site: &SiteIndex) {
+    fn site_complete(&self, _site: &dyn SiteMetadata) {
         let mut state = self.state.lock().unwrap();
         if let ProgressState::BuildingSite { header, pages } = &*state {
             pages.finish();
@@ -97,9 +96,11 @@ impl super::Command for generator::Options {
                 .context("loading site content")?;
             progress.end_load_site(&site);
 
-            generate_site(&site, &self, Some(&progress))
-                .await
-                .context("generating site")?;
+            let site = site.render().context("rendering site")?;
+
+            let gcx = GeneratorContext::new(&site, &self)?;
+
+            gcx.generate_site(&site).await.context("generating site")?;
             progress.site_complete(&site);
 
             let elapsed = start_time.elapsed();
