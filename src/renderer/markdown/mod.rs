@@ -2,10 +2,7 @@
 //!
 //! These are implemented as iterators from markdown events to markdown events.
 
-use std::{
-    borrow::Borrow,
-    path::{Path, PathBuf},
-};
+use std::path::PathBuf;
 
 use bumpalo::Bump;
 use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag};
@@ -18,7 +15,7 @@ pub use footnotes::collect_footnotes;
 use slug::slugify;
 use tracing::debug;
 
-use crate::index::{PageMetadata, PageSource, SiteIndex, SiteMetadata};
+use crate::index::{PageMetadata, PageSource, SiteMetadata};
 
 use super::RenderContext;
 
