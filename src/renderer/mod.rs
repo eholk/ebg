@@ -200,6 +200,10 @@ pub enum RenderError {}
 
 #[cfg(test)]
 mod test {
+    use std::path::PathBuf;
+
+    use eyre::ContextCompat;
+
     use crate::{
         index::{PageSource, SiteIndex, SourceFormat},
         renderer::{markdown::CodeFormatter, RenderContext, RenderSource},
@@ -260,6 +264,39 @@ categories:
         };
         let post = post.render(&rcx)?;
         assert_eq!(post.title(), "This is the title");
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_source_link() -> eyre::Result<()> {
+        let mut site = SiteIndex::default();
+        site.add_page(PageSource::from_string(
+            "_posts/2012-10-14-hello.md",
+            SourceFormat::Markdown,
+            "",
+        ));
+        site.add_page(PageSource::from_string(
+            "_posts/2013-10-14-page2.md",
+            SourceFormat::Markdown,
+            "[hello](./2012-10-14-hello.md)",
+        ));
+        let code_formatter = CodeFormatter::new();
+        let rcx = RenderContext {
+            site: &site,
+            code_formatter: &code_formatter,
+        };
+
+        let render_page = site
+            .find_page_by_source_path(&PathBuf::from("_posts/2013-10-14-page2.md"))
+            .context("could not find source page")?;
+
+        let rendered_page = render_page.render(&rcx)?;
+
+        assert_eq!(
+            rendered_page.rendered_contents(),
+            "<p><a href=\"/blog/2012/10/14/hello/\">hello</a></p>\n<hr />\n"
+        );
+
         Ok(())
     }
 }

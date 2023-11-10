@@ -105,6 +105,14 @@ impl SiteIndex {
     pub fn find_page_by_source_path(&self, path: &Path) -> Option<&PageSource> {
         self.pages.iter().find(|page| page.source_path() == path)
     }
+
+    /// Adds a new page to the site
+    /// 
+    /// This generally shouldn't be needed since pages are loaded from the filesystem,
+    /// but it can be helpful in building mock sites for testing.
+    pub fn add_page(&mut self, page: PageSource) {
+        self.pages.push(page);
+    }
 }
 
 /// Accessor methods for various kinds of site metadata
