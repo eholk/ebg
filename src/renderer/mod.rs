@@ -21,7 +21,7 @@ impl<'a> RenderedSite<'a> {
         self.pages
             .iter()
             .zip(self.source.all_pages())
-            .map(move |(page, source)| RenderedPageRef { source, page })
+            .map(move |(page, source)| RenderedPageRef::new(source, page))
     }
 
     pub fn posts(&self) -> impl Iterator<Item = RenderedPageRef<'_>> {
@@ -180,8 +180,7 @@ impl RenderSource for PageSource {
                 content_title: self.title().unwrap_or("⛔Untitled⛔").to_string(),
             },
             SourceFormat::Markdown => {
-                let (rendered_contents, content_title) =
-                    render_markdown(self.mainmatter(), rcx.code_formatter);
+                let (rendered_contents, content_title) = render_markdown(self, rcx);
                 let content_title = content_title
                     .or_else(|| self.title().map(ToString::to_string))
                     // FIXME: generate a title from the filename or something if there's no title given
@@ -201,8 +200,6 @@ pub enum RenderError {}
 
 #[cfg(test)]
 mod test {
-    use eyre::ContextCompat;
-
     use crate::{
         index::{PageSource, SiteIndex, SourceFormat},
         renderer::{markdown::CodeFormatter, RenderContext, RenderSource},
