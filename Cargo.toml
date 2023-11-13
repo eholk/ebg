@@ -18,7 +18,7 @@ eyre = "0.6.8"
 futures = "0.3.29"
 futures-concurrency = "7.4.3"
 hyper = { version = "0.14.27", features = ["http1", "server", "tcp"] }
-indicatif = "0.17.5"
+indicatif = "0.17.7"
 notify = "6.1.1"
 pathdiff = "0.2.1"
 pulldown-cmark = "0.9.3"
