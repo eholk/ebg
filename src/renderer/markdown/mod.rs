@@ -212,18 +212,27 @@ pub fn adjust_relative_links<'a>(
 ) -> impl Iterator<Item = Event<'a>> {
     let map_url = |url: &CowStr<'_>| {
         let url = url.to_string();
-        let path = PathBuf::from(&url);
-        Some(if path.is_relative() {
+        let (base, anchor) = match url.split_once('#') {
+            Some((base, anchor)) => (base, Some(anchor)),
+            None => (url.as_str(), None),
+        };
+        let path = PathBuf::from(&base);
+        if path.is_relative() {
             debug!("found relative link to {}", path.display());
             let path = page.source_path().parent()?.join(path);
             debug!("mapped path to {}", path.display());
             let page = rcx.site.find_page_by_source_path(&path)?;
-            let url = format!("{}/{}", rcx.site.base_url(), page.url());
+            let url = format!(
+                "{}/{}{}",
+                rcx.site.base_url(),
+                page.url(),
+                anchor.map(|a| format!("#{}", a)).unwrap_or_default()
+            );
             debug!("linking to {url}");
-            url
+            Some(url)
         } else {
-            url
-        })
+            None
+        }
     };
 
     markdown.map(move |event| match event {
