@@ -42,6 +42,8 @@ pub enum GeneratorError {
     AtomError(#[source] atom::AtomError),
     #[error("could not compute relative path for {0}")]
     ComputeRelativePath(PathBuf),
+    #[error("removing old destination directory: {}", .0.display())]
+    CleanDestDir(PathBuf, #[source] io::Error),
     #[error("creating destination directory: {}", .0.display())]
     CreateDestDir(PathBuf, #[source] io::Error),
     #[error("copying {} to {}", .0.display(), .1.display())]
@@ -89,6 +91,24 @@ impl<'a> GeneratorContext<'a> {
     }
 
     pub async fn generate_site(&self, site: &RenderedSite<'_>) -> super::Result<()> {
+        // Clear the destination directory
+        let cleanup = if self.options.destination.exists() {
+            let old = tempfile::tempdir().unwrap();
+            debug!(
+                "moving old destination directory out of the way: {} → {}",
+                self.options.destination.display(),
+                old.path().display()
+            );
+            fs::rename(&self.options.destination, &old.path().join("publish"))
+                .await
+                .map_err(|e| GeneratorError::CleanDestDir(self.options.destination.clone(), e))?;
+            Some(tokio::spawn(async move {
+                drop(old);
+            }))
+        } else {
+            None
+        };
+
         // Create the destination directory
         tokio::fs::create_dir_all(&self.options.destination)
             .await
@@ -99,7 +119,7 @@ impl<'a> GeneratorContext<'a> {
             if let Some(progress) = self.progress {
                 progress.begin_page(&post);
             }
-            self.generate_page(post, site).await?;
+            self.generate_page(post, site)?;
             if let Some(progress) = self.progress {
                 progress.end_page(&post);
             }
@@ -139,10 +159,14 @@ impl<'a> GeneratorContext<'a> {
         )
         .map_err(GeneratorError::AtomError)?;
 
+        if let Some(cleanup) = cleanup {
+            cleanup.await.unwrap()
+        }
+
         Ok(())
     }
 
-    async fn generate_page(
+    fn generate_page(
         &self,
         page: RenderedPageRef<'_>,
         site: &RenderedSite<'_>,
@@ -181,13 +205,10 @@ impl<'a> GeneratorContext<'a> {
             None => content.to_string(),
         };
 
-        tokio::fs::create_dir_all(dest.parent().unwrap())
-            .await
+        std::fs::create_dir_all(dest.parent().unwrap())
             .map_err(|e| GeneratorError::CreateDestDir(dest.parent().unwrap().to_path_buf(), e))?;
 
-        tokio::fs::write(&dest, content)
-            .await
-            .map_err(|e| GeneratorError::WriteFile(dest, e))?;
+        std::fs::write(&dest, content).map_err(|e| GeneratorError::WriteFile(dest, e))?;
 
         Ok(())
     }

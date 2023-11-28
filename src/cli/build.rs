@@ -8,7 +8,7 @@ use ebg::{
     generator::{self, GeneratorContext, Observer, Options},
     index::{PageMetadata, SiteIndex, SiteMetadata},
 };
-use indicatif::{HumanDuration, MultiProgress, ProgressBar};
+use indicatif::{MultiProgress, ProgressBar};
 use miette::{Context, IntoDiagnostic};
 use tokio::runtime::Runtime;
 use tracing::info;
@@ -103,7 +103,7 @@ impl super::Command for generator::Options {
 
             let elapsed = start_time.elapsed();
 
-            println!("Built site in {}", HumanDuration(elapsed));
+            println!("Built site in {:.2?}", elapsed);
 
             Ok(())
         })
