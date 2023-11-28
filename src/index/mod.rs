@@ -66,8 +66,7 @@ impl SiteIndex {
 
         // FIXME: give friendly error reports for bad config files
         let config: Config = toml::from_str(
-            &fs::read_to_string(root_dir.join("Site.toml"))
-                .await
+            &std::fs::read_to_string(root_dir.join("Site.toml"))
                 .map_err(IndexError::ReadingConfigFile)?,
         )
         .map_err(|e| IndexError::ParsingConfigFile(Box::new(e)))?;

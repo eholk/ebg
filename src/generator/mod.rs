@@ -6,9 +6,9 @@ use std::{
 use miette::Diagnostic;
 use pathdiff::diff_paths;
 use serde_json::{json, Map, Value};
+use std::fs;
 use tera::Tera;
 use thiserror::Error;
-use tokio::fs;
 use tracing::debug;
 
 use crate::{
@@ -102,7 +102,6 @@ impl<'a> GeneratorContext<'a> {
                 old.path().display()
             );
             fs::rename(&self.options.destination, &old.path().join("publish"))
-                .await
                 .map_err(|e| GeneratorError::CleanDestDir(self.options.destination.clone(), e))?;
             Some(tokio::spawn(async move {
                 drop(old);
@@ -120,15 +119,17 @@ impl<'a> GeneratorContext<'a> {
         site.all_pages()
             .collect::<Vec<_>>()
             .par_iter()
-            .for_each(|post: &RenderedPageRef<'_>| {
+            .try_for_each(|post: &RenderedPageRef<'_>| {
                 if let Some(progress) = self.progress {
                     progress.begin_page(post);
                 }
-                self.generate_page(*post, site).unwrap();
+                self.generate_page(*post, site)?;
                 if let Some(progress) = self.progress {
                     progress.end_page(post);
                 }
-            });
+                Ok::<_, GeneratorError>(())
+            })?;
+
         // Copy raw files (those that don't need processing or generation)
         for file in site.raw_files() {
             debug!(
@@ -143,13 +144,10 @@ impl<'a> GeneratorContext<'a> {
 
             if let Some(parent) = dest.parent() {
                 fs::create_dir_all(parent)
-                    .await
                     .map_err(|e| GeneratorError::CreateDestDir(parent.into(), e))?;
             }
 
-            fs::copy(file, &dest)
-                .await
-                .map_err(|e| GeneratorError::Copy(file.into(), dest, e))?;
+            fs::copy(file, &dest).map_err(|e| GeneratorError::Copy(file.into(), dest, e))?;
         }
 
         // Generate the atom feed
