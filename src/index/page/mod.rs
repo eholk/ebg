@@ -7,7 +7,9 @@ use std::{
 };
 
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeZone, Utc};
+use miette::{Diagnostic, Report};
 use serde::Deserialize;
+use thiserror::Error;
 use tokio::fs::read_to_string;
 
 use self::parsing_helpers::{
@@ -251,6 +253,17 @@ fn url_from_page_path(path: &Path) -> PathBuf {
     }
 }
 
+#[derive(Diagnostic, Error, Debug)]
+#[error("unknown source format for `{filename}`")]
+#[diagnostic(
+    severity(warning),
+    help("make sure the file extension is .md or .html")
+)]
+struct UnknownSourceFormat {
+    #[source_code]
+    filename: String,
+}
+
 /// Extracts the publish date, page kind, and title from a path like
 /// `_posts/2022-10-14-hello-world.md`, or returns None if the file doesn't match
 /// the expected format.
@@ -258,7 +271,15 @@ fn parse_filename(path: &Path) -> Option<(Date, SourceFormat, &str)> {
     let kind = match path.extension()?.to_str()? {
         "md" | "markdown" => SourceFormat::Markdown,
         "html" | "htm" => SourceFormat::Html,
-        _ => return None,
+        _ => {
+            println!(
+                "{:?}",
+                Report::new(UnknownSourceFormat {
+                    filename: path.display().to_string(),
+                })
+            );
+            return None;
+        }
     };
 
     let filename = path.file_stem()?.to_str()?;
