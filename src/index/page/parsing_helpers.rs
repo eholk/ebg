@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use chrono::{DateTime, Local, ParseResult, TimeZone, Utc};
+use chrono::{DateTime, Local, NaiveDateTime, ParseResult, Utc};
 use serde::{Deserialize, Deserializer};
 use tracing::trace;
 
@@ -21,9 +21,8 @@ fn date_from_str(s: &str) -> ParseResult<Date> {
         .or_else(|_| DateTime::parse_from_str(s, "%F %T %z"))
         .map(|date| date.with_timezone(&Utc))
         .or_else(|_| {
-            Local
-                .datetime_from_str(s, "%F %R")
-                .map(|date| date.with_timezone(&Utc))
+            NaiveDateTime::parse_from_str(s, "%F %R")
+                .map(|date| date.and_local_timezone(Local).unwrap().with_timezone(&Utc))
         })
 }
 

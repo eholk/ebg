@@ -15,7 +15,7 @@ use crate::{
 };
 
 #[derive(Error, Debug)]
-pub(crate) enum AtomError {
+pub enum AtomError {
     #[error("xml generation")]
     XmlError(
         #[source]

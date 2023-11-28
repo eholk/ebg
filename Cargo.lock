@@ -455,7 +455,7 @@ dependencies = [
 
 [[package]]
 name = "ebg"
-version = "0.3.0"
+version = "0.3.1-dev"
 dependencies = [
  "async-walkdir",
  "bumpalo",
