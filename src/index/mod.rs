@@ -5,9 +5,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use eyre::WrapErr;
 use futures::StreamExt;
+use miette::Diagnostic;
 use serde::Deserialize;
+use thiserror::Error;
 use tokio::fs;
 use tokio_stream::wrappers::ReadDirStream;
 
@@ -30,6 +31,20 @@ pub struct Config {
     pub macros: HashMap<String, PathBuf>,
 }
 
+#[derive(Diagnostic, Error, Debug)]
+pub enum IndexError {
+    #[error("reading directory entry")]
+    ReadingDirectoryEntry(#[source] std::io::Error),
+    #[error("invalid post filename: `{}`", .0.display())]
+    InvalidFilename(PathBuf),
+    #[error("reading post contents")]
+    ReadingPostContents(#[source] std::io::Error),
+    #[error("reading Site.toml")]
+    ReadingConfigFile(#[source] std::io::Error),
+    #[error("parsing Site.toml")]
+    ParsingConfigFile(#[source] Box<dyn std::error::Error + Send + Sync>),
+}
+
 /// Holds what is essentially metadata about a site
 ///
 /// This allows us to refer to the site as a whole during page rendering, which
@@ -46,15 +61,16 @@ impl SiteIndex {
     pub async fn from_directory(
         path: impl Into<PathBuf>,
         include_unpublished: bool,
-    ) -> eyre::Result<Self> {
+    ) -> Result<Self, IndexError> {
         let root_dir = path.into();
 
+        // FIXME: give friendly error reports for bad config files
         let config: Config = toml::from_str(
             &fs::read_to_string(root_dir.join("Site.toml"))
                 .await
-                .context("reading Site.toml")?,
+                .map_err(IndexError::ReadingConfigFile)?,
         )
-        .context("parsing Site.toml")?;
+        .map_err(|e| IndexError::ParsingConfigFile(Box::new(e)))?;
 
         let mut pages = vec![];
         let mut raw_files = Vec::new();
@@ -65,15 +81,11 @@ impl SiteIndex {
                 &root_dir,
                 include_unpublished,
             )
-            .await
-            .context("loading posts")?,
+            .await?,
         );
 
         for path in config.content.iter() {
-            match load_directory(root_dir.join(path), &root_dir, include_unpublished)
-                .await
-                .with_context(|| format!("loading {}", path.display()))?
-            {
+            match load_directory(root_dir.join(path), &root_dir, include_unpublished).await? {
                 (new_pages, files) => {
                     pages.extend(new_pages.into_iter());
                     raw_files.extend(files.into_iter());
@@ -107,7 +119,7 @@ impl SiteIndex {
     }
 
     /// Adds a new page to the site
-    /// 
+    ///
     /// This generally shouldn't be needed since pages are loaded from the filesystem,
     /// but it can be helpful in building mock sites for testing.
     pub fn add_page(&mut self, page: PageSource) {
@@ -170,7 +182,7 @@ async fn load_posts(
     path: &Path,
     root_dir: &Path,
     include_unpublished: bool,
-) -> eyre::Result<Vec<PageSource>> {
+) -> Result<Vec<PageSource>, IndexError> {
     if !path.is_dir() {
         return Ok(vec![]);
     }
@@ -179,13 +191,11 @@ async fn load_posts(
     let mut dir_stream = ReadDirStream::new(
         fs::read_dir(path)
             .await
-            .context("could not read directory")?,
+            .map_err(IndexError::ReadingDirectoryEntry)?,
     );
     while let Some(entry) = dir_stream.next().await {
-        let entry = entry.context("reading directory entry")?;
-        let page = PageSource::from_file(entry.path(), root_dir)
-            .await
-            .context("parsing post")?;
+        let entry = entry.map_err(IndexError::ReadingDirectoryEntry)?;
+        let page = PageSource::from_file(entry.path(), root_dir).await?;
 
         if page.published() || include_unpublished {
             posts.push(page)
@@ -201,7 +211,7 @@ async fn load_directory(
     path: impl AsRef<Path>,
     root_dir: &Path,
     include_unpublished: bool,
-) -> eyre::Result<(Vec<PageSource>, Vec<PathBuf>)> {
+) -> Result<(Vec<PageSource>, Vec<PathBuf>), IndexError> {
     let path = path.as_ref();
     let mut pages = vec![];
     let mut raw_files = vec![];
@@ -220,9 +230,9 @@ async fn load_directory(
 
     let mut walk = async_walkdir::WalkDir::new(path);
     while let Some(result) = walk.next().await {
-        let entry = result.context("reading directory entry")?;
+        let entry = result.map_err(IndexError::ReadingDirectoryEntry)?;
 
-        if !entry.file_type().await?.is_file() {
+        if !entry.file_type().await.unwrap().is_file() {
             continue;
         }
 

@@ -2,14 +2,16 @@
 
 use std::path::Path;
 
-use eyre::{ContextCompat, WrapErr};
 use tera::Tera;
 use tracing::debug;
 
 use crate::index::Config;
 
-pub fn create_template_engine(root_dir: &Path, config: &Config) -> eyre::Result<Tera> {
-    let template_path = std::env::current_dir()?
+use super::GeneratorError;
+
+pub fn create_template_engine(root_dir: &Path, config: &Config) -> Result<Tera, GeneratorError> {
+    let template_path = std::env::current_dir()
+        .unwrap()
         .join(root_dir)
         .join(
             config
@@ -20,8 +22,9 @@ pub fn create_template_engine(root_dir: &Path, config: &Config) -> eyre::Result<
         .join("**")
         .join("*.html");
     debug!("loading templates from {}", template_path.display());
-    let mut tera = Tera::new(template_path.to_str().context("invalid template path")?)
-        .context("loading templates")?;
+    // FIXME: report error to caller instead of using expect
+    let mut tera = Tera::new(template_path.to_str().expect("invalid template path"))
+        .map_err(|e| GeneratorError::LoadTemplates(Box::new(e)))?;
     // Disable escaping since we are a static site and so we consider all our input trusted.
     tera.autoescape_on(vec![]);
 

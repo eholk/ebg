@@ -7,13 +7,14 @@ use std::{
 };
 
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeZone, Utc};
-use eyre::{bail, WrapErr};
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 
 use self::parsing_helpers::{
     deserialize_comma_separated_list, deserialize_date, find_frontmatter_delimiter,
 };
+
+use super::IndexError;
 
 mod parsing_helpers;
 
@@ -80,19 +81,19 @@ impl PageSource {
     ///
     /// The `root_dir` specifies the root directory for the site. This page will
     /// be given a path relative to the root directory.
-    pub async fn from_file(filename: impl Into<PathBuf>, root_dir: &Path) -> eyre::Result<Self> {
-        let filename = filename.into();
+    pub async fn from_file(
+        filename: impl Into<PathBuf>,
+        root_dir: &Path,
+    ) -> Result<Self, IndexError> {
+        let filename: PathBuf = filename.into();
 
         let Some((_, kind, _)) = parse_filename(&filename) else {
-            bail!(
-                "{} does not appear to be a valid post filename",
-                filename.display()
-            );
+            return Err(IndexError::InvalidFilename(filename));
         };
 
         let contents = read_to_string(&filename)
             .await
-            .context("reading post contents")?;
+            .map_err(IndexError::ReadingPostContents)?;
         Ok(Self::from_string(
             pathdiff::diff_paths(filename, root_dir).unwrap(),
             kind,
@@ -302,6 +303,7 @@ mod test {
 
     use super::{parse_filename, FrontMatter, PageSource};
     use chrono::{Local, NaiveDateTime, TimeZone, Utc};
+    use miette::IntoDiagnostic;
     use std::path::Path;
 
     #[test]
@@ -376,7 +378,7 @@ Coming soon!
     }
 
     #[test]
-    fn parse_frontmatter() -> eyre::Result<()> {
+    fn parse_frontmatter() -> miette::Result<()> {
         const SRC: &str = r#"layout: post
 title: "Hello, World!"
 date: 2012-11-27 19:40
@@ -384,7 +386,7 @@ comments: true
 categories:
 "#;
 
-        let front: FrontMatter = serde_yaml::from_str(SRC)?;
+        let front: FrontMatter = serde_yaml::from_str(SRC).into_diagnostic()?;
 
         // TODO: make sure we actually parsed the right values
         println!("{front:?}");
@@ -563,13 +565,14 @@ permalink: /about/
     }
 
     #[test]
-    fn parse_frontmatter_tags() -> eyre::Result<()> {
+    fn parse_frontmatter_tags() -> miette::Result<()> {
         let front: FrontMatter = serde_yaml::from_str(
             "layout: page
 title: About
 tags: tag1, tag2
 ",
-        )?;
+        )
+        .into_diagnostic()?;
         println!("frontmatter: {front:#?}");
         assert_eq!(front.tags, vec!["tag1".to_string(), "tag2".to_string()]);
         Ok(())

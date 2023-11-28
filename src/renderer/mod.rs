@@ -1,3 +1,4 @@
+use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::index::{PageMetadata, PageSource, SiteIndex, SiteMetadata, SourceFormat};
@@ -195,14 +196,12 @@ impl RenderSource for PageSource {
 }
 
 /// Describes a failure to render something
-#[derive(Debug, Error)]
+#[derive(Diagnostic, Debug, Error)]
 pub enum RenderError {}
 
 #[cfg(test)]
 mod test {
     use std::path::PathBuf;
-
-    use eyre::ContextCompat;
 
     use crate::{
         index::{PageSource, SiteIndex, SourceFormat},
@@ -210,7 +209,7 @@ mod test {
     };
 
     #[test]
-    fn rendered_excerpt() -> eyre::Result<()> {
+    fn rendered_excerpt() -> miette::Result<()> {
         let page = PageSource::from_string(
             "2012-10-14-hello.md",
             SourceFormat::Markdown,
@@ -240,7 +239,7 @@ this is *not an excerpt*",
     }
 
     #[test]
-    fn leading_h1_as_title() -> eyre::Result<()> {
+    fn leading_h1_as_title() -> miette::Result<()> {
         const SRC: &str = r#"---
 layout: post
 title: "Hello, World!"
@@ -268,7 +267,7 @@ categories:
     }
 
     #[test]
-    fn resolve_source_link() -> eyre::Result<()> {
+    fn resolve_source_link() -> miette::Result<()> {
         let mut site = SiteIndex::default();
         site.add_page(PageSource::from_string(
             "_posts/2012-10-14-hello.md",
@@ -288,7 +287,7 @@ categories:
 
         let render_page = site
             .find_page_by_source_path(&PathBuf::from("_posts/2013-10-14-page2.md"))
-            .context("could not find source page")?;
+            .unwrap();
 
         let rendered_page = render_page.render(&rcx)?;
 
@@ -302,7 +301,7 @@ categories:
 
     /// Make sure that source links handle anchors correctly
     #[test]
-    fn resolve_source_link_hashtag() -> eyre::Result<()> {
+    fn resolve_source_link_hashtag() -> miette::Result<()> {
         let mut site = SiteIndex::default();
         site.add_page(PageSource::from_string(
             "_posts/2012-10-14-hello.md",
@@ -322,7 +321,7 @@ categories:
 
         let render_page = site
             .find_page_by_source_path(&PathBuf::from("_posts/2013-10-14-page2.md"))
-            .context("could not find source page")?;
+            .unwrap();
 
         let rendered_page = render_page.render(&rcx)?;
 

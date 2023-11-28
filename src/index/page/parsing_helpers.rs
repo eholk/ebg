@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use chrono::{DateTime, Local, ParseResult, TimeZone, Utc};
+use chrono::{DateTime, Local, NaiveDateTime, ParseResult, Utc};
 use serde::{Deserialize, Deserializer};
 use tracing::trace;
 
@@ -21,9 +21,8 @@ fn date_from_str(s: &str) -> ParseResult<Date> {
         .or_else(|_| DateTime::parse_from_str(s, "%F %T %z"))
         .map(|date| date.with_timezone(&Utc))
         .or_else(|_| {
-            Local
-                .datetime_from_str(s, "%F %R")
-                .map(|date| date.with_timezone(&Utc))
+            NaiveDateTime::parse_from_str(s, "%F %R")
+                .map(|date| date.and_local_timezone(Local).unwrap().with_timezone(&Utc))
         })
 }
 
@@ -66,14 +65,15 @@ pub fn find_frontmatter_delimiter(s: &str) -> Option<Range<usize>> {
 #[cfg(test)]
 mod test {
     use chrono::{FixedOffset, Local, NaiveDate, TimeZone, Utc};
+    use miette::IntoDiagnostic;
 
     use super::{date_from_str, find_frontmatter_delimiter};
 
     #[test]
-    fn parse_date_with_timezone() -> eyre::Result<()> {
+    fn parse_date_with_timezone() -> miette::Result<()> {
         let date = "2019-10-13T16:06:57-07:00";
         assert_eq!(
-            date_from_str(date)?,
+            date_from_str(date).into_diagnostic()?,
             NaiveDate::from_ymd_opt(2019, 10, 13)
                 .unwrap()
                 .and_hms_opt(16, 6, 57)
@@ -84,7 +84,7 @@ mod test {
 
         let date = "2016-07-28 20:52:28 -0700";
         assert_eq!(
-            date_from_str(date)?,
+            date_from_str(date).into_diagnostic()?,
             NaiveDate::from_ymd_opt(2016, 7, 28)
                 .unwrap()
                 .and_hms_opt(20, 52, 28)
@@ -97,13 +97,13 @@ mod test {
     }
 
     #[test]
-    fn parse_legacy_date() -> eyre::Result<()> {
+    fn parse_legacy_date() -> miette::Result<()> {
         let date = "2012-11-27 19:40";
         let expected = Local
             .with_ymd_and_hms(2012, 11, 27, 19, 40, 0)
             .unwrap()
             .with_timezone(&Utc);
-        assert_eq!(date_from_str(date)?, expected);
+        assert_eq!(date_from_str(date).into_diagnostic()?, expected);
         Ok(())
     }
 

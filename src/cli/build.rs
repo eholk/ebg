@@ -8,8 +8,8 @@ use ebg::{
     generator::{self, GeneratorContext, Observer, Options},
     index::{PageMetadata, SiteIndex, SiteMetadata},
 };
-use eyre::Context;
 use indicatif::{HumanDuration, MultiProgress, ProgressBar};
+use miette::{Context, IntoDiagnostic};
 use tokio::runtime::Runtime;
 use tracing::info;
 
@@ -82,25 +82,23 @@ impl Observer for BuildStatusViewer {
 }
 
 impl super::Command for generator::Options {
-    fn run(self) -> eyre::Result<()> {
+    fn run(self) -> miette::Result<()> {
         let path = find_site_root(&self).context("finding Site.toml")?;
         info!("building blog from {}", path.display());
 
         let start_time = Instant::now();
         let progress = BuildStatusViewer::new();
 
-        Runtime::new()?.block_on(async move {
+        Runtime::new().into_diagnostic()?.block_on(async move {
             progress.begin_load_site();
-            let site = SiteIndex::from_directory(&path, self.unpublished)
-                .await
-                .context("loading site content")?;
+            let site = SiteIndex::from_directory(&path, self.unpublished).await?;
             progress.end_load_site(&site);
 
-            let site = site.render().context("rendering site")?;
+            let site = site.render()?;
 
             let gcx = GeneratorContext::new(&site, &self)?;
 
-            gcx.generate_site(&site).await.context("generating site")?;
+            gcx.generate_site(&site).await?;
             progress.site_complete(&site);
 
             let elapsed = start_time.elapsed();
@@ -112,7 +110,7 @@ impl super::Command for generator::Options {
     }
 }
 
-pub(crate) fn find_site_root(options: &Options) -> eyre::Result<PathBuf> {
+pub(crate) fn find_site_root(options: &Options) -> miette::Result<PathBuf> {
     let mut path = options.path.clone().unwrap_or(".".into());
     loop {
         if path.join("Site.toml").exists() {
@@ -121,7 +119,7 @@ pub(crate) fn find_site_root(options: &Options) -> eyre::Result<PathBuf> {
 
         path = match path.parent() {
             Some(parent) => parent.to_path_buf(),
-            None => eyre::bail!("could not find ebg.toml in any parent directory"),
+            None => miette::bail!("could not find Site.toml in any parent directory"),
         };
     }
 }

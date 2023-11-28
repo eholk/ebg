@@ -28,9 +28,7 @@ enum Commands {
     About(AboutOptions),
 }
 
-fn main() -> eyre::Result<()> {
-    color_eyre::install()?;
-
+fn main() -> miette::Result<()> {
     let args = Cli::parse();
 
     tracing_subscriber::registry()
