@@ -202,15 +202,13 @@ pub enum RenderError {}
 mod test {
     use std::path::PathBuf;
 
-    use eyre::ContextCompat;
-
     use crate::{
         index::{PageSource, SiteIndex, SourceFormat},
         renderer::{markdown::CodeFormatter, RenderContext, RenderSource},
     };
 
     #[test]
-    fn rendered_excerpt() -> eyre::Result<()> {
+    fn rendered_excerpt() -> miette::Result<()> {
         let page = PageSource::from_string(
             "2012-10-14-hello.md",
             SourceFormat::Markdown,
@@ -240,7 +238,7 @@ this is *not an excerpt*",
     }
 
     #[test]
-    fn leading_h1_as_title() -> eyre::Result<()> {
+    fn leading_h1_as_title() -> miette::Result<()> {
         const SRC: &str = r#"---
 layout: post
 title: "Hello, World!"
@@ -268,7 +266,7 @@ categories:
     }
 
     #[test]
-    fn resolve_source_link() -> eyre::Result<()> {
+    fn resolve_source_link() -> miette::Result<()> {
         let mut site = SiteIndex::default();
         site.add_page(PageSource::from_string(
             "_posts/2012-10-14-hello.md",
@@ -302,7 +300,7 @@ categories:
 
     /// Make sure that source links handle anchors correctly
     #[test]
-    fn resolve_source_link_hashtag() -> eyre::Result<()> {
+    fn resolve_source_link_hashtag() -> miette::Result<()> {
         let mut site = SiteIndex::default();
         site.add_page(PageSource::from_string(
             "_posts/2012-10-14-hello.md",

@@ -1,6 +1,7 @@
 {
     "sarif-viewer.connectToGithubCodeScanning": "off",
     "cSpell.words": [
+        "autoescape",
         "backlink",
         "backref",
         "bumpalo",
@@ -12,6 +13,7 @@
         "fnref",
         "indicatif",
         "mainmatter",
+        "miette",
         "Octopress",
         "pathdiff",
         "rsplit",

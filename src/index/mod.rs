@@ -5,9 +5,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use eyre::WrapErr;
 use futures::StreamExt;
 use serde::Deserialize;
+use thiserror::Error;
 use tokio::fs;
 use tokio_stream::wrappers::ReadDirStream;
 
@@ -30,6 +30,11 @@ pub struct Config {
     pub macros: HashMap<String, PathBuf>,
 }
 
+#[derive(Error, Debug)]
+pub enum IndexError {
+
+}
+
 /// Holds what is essentially metadata about a site
 ///
 /// This allows us to refer to the site as a whole during page rendering, which
@@ -46,7 +51,7 @@ impl SiteIndex {
     pub async fn from_directory(
         path: impl Into<PathBuf>,
         include_unpublished: bool,
-    ) -> eyre::Result<Self> {
+    ) -> Result<Self, IndexError> {
         let root_dir = path.into();
 
         let config: Config = toml::from_str(
@@ -170,7 +175,7 @@ async fn load_posts(
     path: &Path,
     root_dir: &Path,
     include_unpublished: bool,
-) -> eyre::Result<Vec<PageSource>> {
+) -> Result<Vec<PageSource>, IndexError> {
     if !path.is_dir() {
         return Ok(vec![]);
     }
@@ -201,7 +206,7 @@ async fn load_directory(
     path: impl AsRef<Path>,
     root_dir: &Path,
     include_unpublished: bool,
-) -> eyre::Result<(Vec<PageSource>, Vec<PathBuf>)> {
+) -> Result<(Vec<PageSource>, Vec<PathBuf>), IndexError> {
     let path = path.as_ref();
     let mut pages = vec![];
     let mut raw_files = vec![];

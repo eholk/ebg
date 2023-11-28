@@ -3,7 +3,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use eyre::Context;
 use pathdiff::diff_paths;
 use serde_json::{json, Map, Value};
 use tera::Tera;
@@ -46,11 +45,16 @@ pub(crate) enum GeneratorError {
     CreateDestDir(PathBuf, #[source] io::Error),
     #[error("copying {} to {}", .0.display(), .1.display())]
     Copy(PathBuf, PathBuf, #[source] io::Error),
-    #[error("generating page or post \"{0}\"")]
-    // FIXME: use a custom error type here instead of eyre::Report
-    GeneratePage(String, #[source] eyre::Report),
     #[error("creating file `{}`", .0.display())]
     CreateFile(PathBuf, #[source] io::Error),
+    #[error("writing file contents to `{}`", .0.display())]
+    WriteFile(PathBuf, #[source] io::Error),
+    #[error("loading templates")]
+    LoadTemplates(#[source] Box<dyn std::error::Error>),
+    #[error("importing site macros")]
+    ImportSiteMacros(#[source] Box<dyn std::error::Error>),
+    #[error("rendering template")]
+    RenderTemplate(#[source] Box<dyn std::error::Error>),
 }
 
 pub trait Observer: Send + Sync {
@@ -69,7 +73,7 @@ pub struct GeneratorContext<'a> {
 }
 
 impl<'a> GeneratorContext<'a> {
-    pub fn new(site: &RenderedSite, options: &'a Options) -> Result<Self, eyre::Error> {
+    pub fn new(site: &RenderedSite, options: &'a Options) -> Result<Self, GeneratorError> {
         let templates = create_template_engine(site.root_dir(), site.config())?;
         Ok(Self {
             templates,
@@ -94,9 +98,7 @@ impl<'a> GeneratorContext<'a> {
             if let Some(progress) = self.progress {
                 progress.begin_page(&post);
             }
-            self.generate_page(post, site)
-                .await
-                .map_err(|e| GeneratorError::GeneratePage(post.title().to_string(), e))?;
+            self.generate_page(post, site).await?;
             if let Some(progress) = self.progress {
                 progress.end_page(&post);
             }
@@ -143,7 +145,7 @@ impl<'a> GeneratorContext<'a> {
         &self,
         page: RenderedPageRef<'_>,
         site: &RenderedSite<'_>,
-    ) -> eyre::Result<()> {
+    ) -> Result<(), GeneratorError> {
         let dest = self.options.destination.join(page.url()).join("index.html");
 
         debug!("destination path: {}", dest.display());
@@ -168,23 +170,23 @@ impl<'a> GeneratorContext<'a> {
                 let mut templates = self.templates.clone();
                 let content = templates
                     .render_str(&content_template, &context)
-                    .context("importing site macros")?;
+                    .map_err(|e| GeneratorError::ImportSiteMacros(Box::new(e)))?;
 
                 context.insert("content", &content);
                 self.templates
                     .render(&format!("{template}.html"), &context)
-                    .context("rendering template")?
+                    .map_err(|e| GeneratorError::RenderTemplate(Box::new(e)))?
             }
             None => content.to_string(),
         };
 
         tokio::fs::create_dir_all(dest.parent().unwrap())
             .await
-            .context("creating destination directory")?;
+            .map_err(|e| GeneratorError::CreateDestDir(dest.parent().unwrap().to_path_buf(), e))?;
 
-        tokio::fs::write(dest, content)
+        tokio::fs::write(&dest, content)
             .await
-            .context("writing output")?;
+            .map_err(|e| GeneratorError::WriteFile(dest, e))?;
 
         Ok(())
     }

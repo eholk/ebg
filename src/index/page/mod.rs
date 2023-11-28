@@ -7,13 +7,15 @@ use std::{
 };
 
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeZone, Utc};
-use eyre::{bail, WrapErr};
+use miette::bail;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 
 use self::parsing_helpers::{
     deserialize_comma_separated_list, deserialize_date, find_frontmatter_delimiter,
 };
+
+use super::IndexError;
 
 mod parsing_helpers;
 
@@ -80,7 +82,10 @@ impl PageSource {
     ///
     /// The `root_dir` specifies the root directory for the site. This page will
     /// be given a path relative to the root directory.
-    pub async fn from_file(filename: impl Into<PathBuf>, root_dir: &Path) -> eyre::Result<Self> {
+    pub async fn from_file(
+        filename: impl Into<PathBuf>,
+        root_dir: &Path,
+    ) -> Result<Self, IndexError> {
         let filename = filename.into();
 
         let Some((_, kind, _)) = parse_filename(&filename) else {
