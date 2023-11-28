@@ -63,6 +63,16 @@ pub enum PageKind {
     Post,
 }
 
+#[derive(Diagnostic, Debug, Error)]
+pub enum PageLoadError {
+    #[error("could not interpret filename")]
+    ParseFilename(#[diagnostic_source] ParseFilenameError),
+
+    #[error("reading post contents")]
+    #[diagnostic(severity(error))]
+    ReadingPostContents(#[source] std::io::Error),
+}
+
 /// Represents the content of a page that can be trivially read from disk
 ///
 /// This includes metadata that is often helpful in rendering other pages but
@@ -86,16 +96,14 @@ impl PageSource {
     pub async fn from_file(
         filename: impl Into<PathBuf>,
         root_dir: &Path,
-    ) -> Result<Self, IndexError> {
+    ) -> Result<Self, PageLoadError> {
         let filename: PathBuf = filename.into();
 
-        let Some((_, kind, _)) = parse_filename(&filename) else {
-            return Err(IndexError::InvalidFilename(filename));
-        };
+        let (_, kind, _) = parse_filename(&filename).map_err(PageLoadError::ParseFilename)?;
 
         let contents = read_to_string(&filename)
             .await
-            .map_err(IndexError::ReadingPostContents)?;
+            .map_err(PageLoadError::ReadingPostContents)?;
         Ok(Self::from_string(
             pathdiff::diff_paths(filename, root_dir).unwrap(),
             kind,
@@ -253,43 +261,51 @@ fn url_from_page_path(path: &Path) -> PathBuf {
     }
 }
 
-#[derive(Diagnostic, Error, Debug)]
-#[error("unknown source format for `{filename}`")]
-#[diagnostic(
-    severity(warning),
-    help("make sure the file extension is .md or .html")
-)]
-struct UnknownSourceFormat {
-    #[source_code]
-    filename: String,
+#[derive(Debug, Diagnostic, Error, PartialEq)]
+enum ParseFilenameError {
+    #[error("filename has no extension")]
+    #[diagnostic(help("make sure the file extension is .md or .html"))]
+    NoExtension,
+    #[error("unrecognized extension")]
+    #[diagnostic(help("try adding a .md or .html extension"))]
+    UnrecognizedExtension {
+        #[source_code]
+        filename: String,
+        #[label("this extension is not recognized")]
+        span: Range<usize>,
+    },
 }
 
 /// Extracts the publish date, page kind, and title from a path like
 /// `_posts/2022-10-14-hello-world.md`, or returns None if the file doesn't match
 /// the expected format.
-fn parse_filename(path: &Path) -> Option<(Date, SourceFormat, &str)> {
-    let kind = match path.extension()?.to_str()? {
-        "md" | "markdown" => SourceFormat::Markdown,
-        "html" | "htm" => SourceFormat::Html,
-        _ => {
-            println!(
-                "{:?}",
-                Report::new(UnknownSourceFormat {
-                    filename: path.display().to_string(),
-                })
-            );
-            return None;
+fn parse_filename(path: &Path) -> Result<(Date, SourceFormat, &str), ParseFilenameError> {
+    let kind = match path.extension().and_then(|ext| ext.to_str()) {
+        Some("md" | "markdown") => SourceFormat::Markdown,
+        Some("html" | "htm") => SourceFormat::Html,
+        Some(_) => {
+            let path = path.to_str().unwrap();
+            let ext_loc = path.rfind('.').unwrap() + 1;
+            let span = ext_loc..(path.len());
+            return Err(ParseFilenameError::UnrecognizedExtension {
+                filename: path.into(),
+                span,
+            });
         }
+        None => return Err(ParseFilenameError::NoExtension),
     };
 
-    let filename = path.file_stem()?.to_str()?;
+    // FIXME: replace unwraps with diagnostics to explain why the date is wrong.
+    let filename = path.file_stem().unwrap().to_str().unwrap();
     match parse_date_from_filename(filename) {
-        Some((date, rest)) => Some((date, kind, rest)),
-        None => Some((
+        Some((date, rest)) => Ok((date, kind, rest)),
+        None => Ok((
             // FIXME: We should return an option rather than fabricating a date
-            NaiveDateTime::from_timestamp_millis(0)?
+            NaiveDateTime::from_timestamp_millis(0)
+                .unwrap()
                 .and_local_timezone(Utc)
-                .single()?,
+                .single()
+                .unwrap(),
             kind,
             filename,
         )),
@@ -331,7 +347,7 @@ mod test {
     fn parse_bare_filename() {
         assert_eq!(
             parse_filename(Path::new("about.md")),
-            Some((
+            Ok((
                 NaiveDateTime::from_timestamp_millis(0)
                     .unwrap()
                     .and_local_timezone(Utc)
@@ -348,7 +364,7 @@ mod test {
             parse_filename(
                 &Path::new("_posts").join("2021-01-14-coming-soon-primitive-computing.md")
             ),
-            Some((
+            Ok((
                 Local
                     .with_ymd_and_hms(2021, 1, 14, 0, 0, 0)
                     .unwrap()
@@ -519,14 +535,14 @@ Hello, world!
 
     #[test]
     fn parse_filenames() {
-        assert_eq!(
-            parse_filename(Path::new("_post/2022-10-14-hello.toml")),
-            None
+        assert!(
+            // FIXME: make sure we get the right kind of error
+            parse_filename(Path::new("_post/2022-10-14-hello.toml")).is_err()
         );
 
         assert_eq!(
             parse_filename(Path::new("_post/2022-10-14-hello.md")),
-            Some((
+            Ok((
                 Local
                     .with_ymd_and_hms(2022, 10, 14, 0, 0, 0)
                     .unwrap()
@@ -538,7 +554,7 @@ Hello, world!
 
         assert_eq!(
             parse_filename(Path::new("_post/2022-10-14-long-file-name.markdown")),
-            Some((
+            Ok((
                 Local
                     .with_ymd_and_hms(2022, 10, 14, 0, 0, 0)
                     .unwrap()
@@ -550,7 +566,7 @@ Hello, world!
 
         assert_eq!(
             parse_filename(Path::new("_post/2022-10-14-long-file-name.htm")),
-            Some((
+            Ok((
                 Local
                     .with_ymd_and_hms(2022, 10, 14, 0, 0, 0)
                     .unwrap()
@@ -562,7 +578,7 @@ Hello, world!
 
         assert_eq!(
             parse_filename(Path::new("_post/2022-10-14-long-file-name.html")),
-            Some((
+            Ok((
                 Local
                     .with_ymd_and_hms(2022, 10, 14, 0, 0, 0)
                     .unwrap()

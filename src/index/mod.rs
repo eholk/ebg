@@ -6,7 +6,7 @@ use std::{
 };
 
 use futures::StreamExt;
-use miette::Diagnostic;
+use miette::{miette, Diagnostic, Severity};
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::fs;
@@ -15,6 +15,8 @@ use tokio_stream::wrappers::ReadDirStream;
 mod page;
 
 pub use page::{PageKind, PageMetadata, PageSource, SourceFormat};
+
+use self::page::PageLoadError;
 
 #[derive(Deserialize, Default)]
 pub struct Config {
@@ -177,6 +179,16 @@ impl SiteMetadata for SiteIndex {
     }
 }
 
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(severity(warning))]
+#[error("skipping post with filename `{filename}`")]
+struct SkippedPost {
+    #[source_code]
+    filename: String,
+    #[diagnostic_source]
+    reason: PageLoadError,
+}
+
 async fn load_posts(
     path: &Path,
     root_dir: &Path,
@@ -194,7 +206,20 @@ async fn load_posts(
     );
     while let Some(entry) = dir_stream.next().await {
         let entry = entry.map_err(IndexError::ReadingDirectoryEntry)?;
-        let page = PageSource::from_file(entry.path(), root_dir).await?;
+        let page = match PageSource::from_file(entry.path(), root_dir).await {
+            Ok(page) => page,
+            Err(e) if e.severity() <= Some(Severity::Warning) => {
+                println!(
+                    "{:?}",
+                    miette::Report::new(SkippedPost {
+                        filename: entry.path().display().to_string(),
+                        reason: e,
+                    })
+                );
+                continue;
+            }
+            Err(e) => panic!("I don't know what to do with this error: {}", e),
+        };
 
         if page.published() || include_unpublished {
             posts.push(page)
