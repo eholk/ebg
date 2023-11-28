@@ -20,6 +20,8 @@ use clap::ValueHint::DirPath;
 
 use self::{atom::generate_atom, theme::create_template_engine};
 
+use rayon::prelude::*;
+
 mod atom;
 mod theme;
 
@@ -115,16 +117,18 @@ impl<'a> GeneratorContext<'a> {
             .map_err(|e| GeneratorError::CreateDestDir(self.options.destination.clone(), e))?;
 
         // Generate pages
-        for post in site.all_pages() {
-            if let Some(progress) = self.progress {
-                progress.begin_page(&post);
-            }
-            self.generate_page(post, site)?;
-            if let Some(progress) = self.progress {
-                progress.end_page(&post);
-            }
-        }
-
+        site.all_pages()
+            .collect::<Vec<_>>()
+            .par_iter()
+            .for_each(|post: &RenderedPageRef<'_>| {
+                if let Some(progress) = self.progress {
+                    progress.begin_page(post);
+                }
+                self.generate_page(*post, site).unwrap();
+                if let Some(progress) = self.progress {
+                    progress.end_page(post);
+                }
+            });
         // Copy raw files (those that don't need processing or generation)
         for file in site.raw_files() {
             debug!(
