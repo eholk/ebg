@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use miette::Diagnostic;
 use pathdiff::diff_paths;
 use serde_json::{json, Map, Value};
 use tera::Tera;
@@ -35,8 +36,8 @@ pub struct Options {
     pub unpublished: bool,
 }
 
-#[derive(Debug, Error)]
-pub(crate) enum GeneratorError {
+#[derive(Diagnostic, Debug, Error)]
+pub enum GeneratorError {
     #[error("generating atom feed")]
     AtomError(#[source] atom::AtomError),
     #[error("could not compute relative path for {0}")]
@@ -50,11 +51,11 @@ pub(crate) enum GeneratorError {
     #[error("writing file contents to `{}`", .0.display())]
     WriteFile(PathBuf, #[source] io::Error),
     #[error("loading templates")]
-    LoadTemplates(#[source] Box<dyn std::error::Error>),
+    LoadTemplates(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("importing site macros")]
-    ImportSiteMacros(#[source] Box<dyn std::error::Error>),
+    ImportSiteMacros(#[source] Box<dyn std::error::Error + Send + Sync>),
     #[error("rendering template")]
-    RenderTemplate(#[source] Box<dyn std::error::Error>),
+    RenderTemplate(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 pub trait Observer: Send + Sync {
@@ -245,7 +246,7 @@ mod test {
 
     /// Regression test for #12
     #[test]
-    fn template_full_excerpt_when_missing_delimiter() -> eyre::Result<()> {
+    fn template_full_excerpt_when_missing_delimiter() -> miette::Result<()> {
         let page = PageSource::from_string(
             "2012-10-14-hello.md",
             SourceFormat::Markdown,

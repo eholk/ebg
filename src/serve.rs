@@ -9,6 +9,7 @@ use hyper::{
     service::{make_service_fn, service_fn},
     Body, Method, Request, Response, Server, StatusCode,
 };
+use miette::IntoDiagnostic;
 use notify::{Event, RecursiveMode, Watcher};
 use thiserror::Error;
 use tokio::runtime::Runtime;
@@ -26,8 +27,8 @@ pub struct ServerOptions {
 }
 
 impl Command for ServerOptions {
-    fn run(self) -> eyre::Result<()> {
-        let rt = Runtime::new()?;
+    fn run(self) -> miette::Result<()> {
+        let rt = Runtime::new().into_diagnostic()?;
         rt.block_on(serve(self))
     }
 }
@@ -51,11 +52,11 @@ enum ServerError {
     UnsupportedMethod(hyper::http::Method),
 }
 
-pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
+pub(crate) async fn serve(options: ServerOptions) -> miette::Result<()> {
     let addr = SocketAddr::from(([127, 0, 0, 1], options.port));
 
     let args = options.build_opts.clone();
-    let destination = std::fs::canonicalize(&args.destination)?;
+    let destination = std::fs::canonicalize(&args.destination).into_diagnostic()?;
 
     let (send, mut recv) = tokio::sync::mpsc::channel(1);
 
@@ -74,10 +75,13 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
             debug!(?result);
         }
         Err(e) => error!("{e}"),
-    })?;
+    })
+    .into_diagnostic()?;
 
-    let path = std::fs::canonicalize(&find_site_root(&options.build_opts)?)?;
-    watcher.watch(&path, RecursiveMode::Recursive)?;
+    let path = std::fs::canonicalize(&find_site_root(&options.build_opts)?).into_diagnostic()?;
+    watcher
+        .watch(&path, RecursiveMode::Recursive)
+        .into_diagnostic()?;
 
     // FIXME: Watch for file changes and rebuild the site if it changes.
     let generate = tokio::spawn(async move {
@@ -135,9 +139,10 @@ pub(crate) async fn serve(options: ServerOptions) -> eyre::Result<()> {
                 }))
             },
         ))
-        .await?;
+        .await
+        .into_diagnostic()?;
 
-    generate.await?;
+    generate.await.into_diagnostic()?;
 
     Ok(())
 }
@@ -228,6 +233,7 @@ mod test {
     };
 
     use hyper::{body::to_bytes, Request, StatusCode};
+    use miette::IntoDiagnostic;
 
     use crate::serve::{guess_mime_type_from_path, handle_request, ServerError};
 
@@ -243,12 +249,15 @@ mod test {
 
     /// Make sure we can fetch a file that's known to exist
     #[tokio::test]
-    async fn get_file() -> eyre::Result<()> {
+    async fn get_file() -> miette::Result<()> {
         let site = test_site();
 
-        let req = Request::builder().uri("/index.html").body("".into())?;
+        let req = Request::builder()
+            .uri("/index.html")
+            .body("".into())
+            .into_diagnostic()?;
 
-        let res = handle_request(req, &site).await?;
+        let res = handle_request(req, &site).await.into_diagnostic()?;
 
         assert_eq!(res.status(), StatusCode::OK);
 
@@ -262,7 +271,8 @@ mod test {
 </html>";
         // Read the body but replace line endings to deal with platform differences.
         let body = to_bytes(res.into_body())
-            .await?
+            .await
+            .into_diagnostic()?
             .lines()
             .map(Result::unwrap)
             .collect::<Vec<_>>()
@@ -274,12 +284,15 @@ mod test {
 
     /// Make sure we can fetch the index of a directory
     #[tokio::test]
-    async fn get_index() -> eyre::Result<()> {
+    async fn get_index() -> miette::Result<()> {
         let site = test_site();
 
-        let req = Request::builder().uri("/").body("".into())?;
+        let req = Request::builder()
+            .uri("/")
+            .body("".into())
+            .into_diagnostic()?;
 
-        let res = handle_request(req, &site).await?;
+        let res = handle_request(req, &site).await.into_diagnostic()?;
 
         assert_eq!(res.status(), StatusCode::OK);
 
@@ -293,7 +306,8 @@ mod test {
 </html>";
         // Read the body but replace line endings to deal with platform differences.
         let body = to_bytes(res.into_body())
-            .await?
+            .await
+            .into_diagnostic()?
             .lines()
             .map(Result::unwrap)
             .collect::<Vec<_>>()
@@ -305,10 +319,13 @@ mod test {
 
     /// Make sure we report an error if we ask for a nonexistent file
     #[tokio::test]
-    async fn not_found() -> eyre::Result<()> {
+    async fn not_found() -> miette::Result<()> {
         let site = test_site();
 
-        let req = Request::builder().uri("/not-found").body("".into())?;
+        let req = Request::builder()
+            .uri("/not-found")
+            .body("".into())
+            .into_diagnostic()?;
 
         let res = handle_request(req, &site).await;
 

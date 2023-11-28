@@ -1,6 +1,10 @@
-use std::{fs::{create_dir, File}, io::Write};
+use std::{
+    fs::{create_dir, File},
+    io::Write,
+};
 
 use clap::Parser;
+use miette::IntoDiagnostic;
 use tracing::debug;
 
 #[derive(Parser)]
@@ -9,12 +13,12 @@ pub struct NewPostOptions {
 }
 
 impl super::Command for NewPostOptions {
-    fn run(self) -> eyre::Result<()> {
+    fn run(self) -> miette::Result<()> {
         // make sure there's a Site.toml in the current directory
-        let root = std::env::current_dir()?;
+        let root = std::env::current_dir().unwrap();
         let site_toml = root.join("Site.toml");
         if !site_toml.exists() {
-            return Err(eyre::eyre!(
+            return Err(miette::miette!(
                 "No Site.toml found in current directory: {}",
                 root.display()
             ));
@@ -23,7 +27,7 @@ impl super::Command for NewPostOptions {
         let posts_dir = root.join("_posts");
 
         if !posts_dir.exists() {
-            create_dir(&posts_dir)?;
+            create_dir(&posts_dir).into_diagnostic()?;
         }
 
         let post_filename = posts_dir.join(format!(
@@ -33,7 +37,7 @@ impl super::Command for NewPostOptions {
         ));
         debug!("creating new post at {}", post_filename.display());
 
-        let mut file = File::create(&post_filename)?;
+        let mut file = File::create(&post_filename).into_diagnostic()?;
         file.write_all(
             format!(
                 r#"---
@@ -46,7 +50,7 @@ published: false
                 title = self.title
             )
             .as_bytes(),
-        )?;
+        ).into_diagnostic()?;
 
         Ok(())
     }

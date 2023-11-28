@@ -1,3 +1,4 @@
+use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::index::{PageMetadata, PageSource, SiteIndex, SiteMetadata, SourceFormat};
@@ -195,7 +196,7 @@ impl RenderSource for PageSource {
 }
 
 /// Describes a failure to render something
-#[derive(Debug, Error)]
+#[derive(Diagnostic, Debug, Error)]
 pub enum RenderError {}
 
 #[cfg(test)]
@@ -286,7 +287,7 @@ categories:
 
         let render_page = site
             .find_page_by_source_path(&PathBuf::from("_posts/2013-10-14-page2.md"))
-            .context("could not find source page")?;
+            .unwrap();
 
         let rendered_page = render_page.render(&rcx)?;
 
@@ -320,7 +321,7 @@ categories:
 
         let render_page = site
             .find_page_by_source_path(&PathBuf::from("_posts/2013-10-14-page2.md"))
-            .context("could not find source page")?;
+            .unwrap();
 
         let rendered_page = render_page.render(&rcx)?;
 

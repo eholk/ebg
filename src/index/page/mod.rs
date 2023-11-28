@@ -7,7 +7,6 @@ use std::{
 };
 
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeZone, Utc};
-use miette::bail;
 use serde::Deserialize;
 use tokio::fs::read_to_string;
 
@@ -86,18 +85,15 @@ impl PageSource {
         filename: impl Into<PathBuf>,
         root_dir: &Path,
     ) -> Result<Self, IndexError> {
-        let filename = filename.into();
+        let filename: PathBuf = filename.into();
 
         let Some((_, kind, _)) = parse_filename(&filename) else {
-            bail!(
-                "{} does not appear to be a valid post filename",
-                filename.display()
-            );
+            return Err(IndexError::InvalidFilename(filename));
         };
 
         let contents = read_to_string(&filename)
             .await
-            .context("reading post contents")?;
+            .map_err(IndexError::ReadingPostContents)?;
         Ok(Self::from_string(
             pathdiff::diff_paths(filename, root_dir).unwrap(),
             kind,
@@ -307,6 +303,7 @@ mod test {
 
     use super::{parse_filename, FrontMatter, PageSource};
     use chrono::{Local, NaiveDateTime, TimeZone, Utc};
+    use miette::IntoDiagnostic;
     use std::path::Path;
 
     #[test]
@@ -381,7 +378,7 @@ Coming soon!
     }
 
     #[test]
-    fn parse_frontmatter() -> eyre::Result<()> {
+    fn parse_frontmatter() -> miette::Result<()> {
         const SRC: &str = r#"layout: post
 title: "Hello, World!"
 date: 2012-11-27 19:40
@@ -389,7 +386,7 @@ comments: true
 categories:
 "#;
 
-        let front: FrontMatter = serde_yaml::from_str(SRC)?;
+        let front: FrontMatter = serde_yaml::from_str(SRC).into_diagnostic()?;
 
         // TODO: make sure we actually parsed the right values
         println!("{front:?}");
@@ -568,13 +565,14 @@ permalink: /about/
     }
 
     #[test]
-    fn parse_frontmatter_tags() -> eyre::Result<()> {
+    fn parse_frontmatter_tags() -> miette::Result<()> {
         let front: FrontMatter = serde_yaml::from_str(
             "layout: page
 title: About
 tags: tag1, tag2
 ",
-        )?;
+        )
+        .into_diagnostic()?;
         println!("frontmatter: {front:#?}");
         assert_eq!(front.tags, vec!["tag1".to_string(), "tag2".to_string()]);
         Ok(())

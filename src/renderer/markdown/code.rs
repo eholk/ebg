@@ -149,7 +149,7 @@ mod test {
     use crate::renderer::markdown::code::parse_lang;
 
     #[test]
-    fn parse_lang_options() -> eyre::Result<()> {
+    fn parse_lang_options() -> miette::Result<()> {
         let opts = parse_lang("rust=");
         assert_eq!(opts.lang, Some("rust"));
         assert!(opts.line_numbers);

@@ -29,8 +29,6 @@ enum Commands {
 }
 
 fn main() -> miette::Result<()> {
-    color_eyre::install()?;
-
     let args = Cli::parse();
 
     tracing_subscriber::registry()

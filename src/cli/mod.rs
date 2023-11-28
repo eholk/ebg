@@ -8,5 +8,5 @@ pub mod new_post;
 ///
 /// This is normally implemented on the arguments struct.
 pub trait Command {
-    fn run(self) -> eyre::Result<()>;
+    fn run(self) -> miette::Result<()>;
 }
