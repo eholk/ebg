@@ -11,13 +11,10 @@ mod cli;
 mod serve;
 
 #[derive(Parser)]
+#[command(author, version, about)]
 struct Cli {
-    /// Print the version number
-    #[clap(long)]
-    version: bool,
-
     #[clap(subcommand)]
-    command: Option<Commands>,
+    command: Commands,
 }
 
 #[derive(Parser)]
@@ -36,24 +33,11 @@ fn main() -> miette::Result<()> {
         .with(EnvFilter::from_env("EBG_LOG"))
         .init();
 
-    if args.version {
-        println!("ebg {}", env!("CARGO_PKG_VERSION"));
-        if args.command.is_none() {
-            return Ok(());
-        }
-    }
-
     match args.command {
-        Some(Commands::Build(args)) => args.run()?,
-        Some(Commands::NewPost(options)) => options.run()?,
-        Some(Commands::Serve(options)) => options.run()?,
-        Some(Commands::About(cmd)) => cmd.run()?,
-        None => {
-            // Print out the help message since no command was given.
-            //
-            // FIXME: surely there's a better way to do this...
-            Cli::parse_from(["ebg", "--help"].iter());
-        }
+        Commands::Build(args) => args.run()?,
+        Commands::NewPost(options) => options.run()?,
+        Commands::Serve(options) => options.run()?,
+        Commands::About(cmd) => cmd.run()?,
     }
 
     Ok(())

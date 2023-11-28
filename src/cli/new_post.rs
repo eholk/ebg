@@ -50,7 +50,8 @@ published: false
                 title = self.title
             )
             .as_bytes(),
-        ).into_diagnostic()?;
+        )
+        .into_diagnostic()?;
 
         Ok(())
     }
