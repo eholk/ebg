@@ -1,4 +1,5 @@
 use miette::Diagnostic;
+use rayon::prelude::*;
 use thiserror::Error;
 
 use crate::index::{PageMetadata, PageSource, SiteIndex, SiteMetadata, SourceFormat};
@@ -77,6 +78,8 @@ impl SiteIndex {
         };
         let pages = self
             .all_pages()
+            .collect::<Vec<_>>()
+            .par_iter()
             .map(|page| page.render(&ctx))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(RenderedSite {
