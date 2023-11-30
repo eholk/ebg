@@ -32,12 +32,14 @@
 //! destination directory. Many files are copied directly, but this also
 //! generates HTML pages from the rendered markdown contents of the last phase.
 
+#![feature(gen_blocks)]
+
 use generator::GeneratorError;
 use miette::Diagnostic;
 
+pub mod generator;
 pub mod index;
 pub mod renderer;
-pub mod generator;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

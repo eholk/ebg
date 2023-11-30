@@ -150,49 +150,50 @@ impl HeadingAnchors {
     where
         'b: 'a,
     {
-        let mut heading_text = String::new();
+        gen {
+            let mut heading_text = String::new();
 
-        let mut header_start = None;
+            let mut header_start = None;
 
-        let mut out_events = Vec::with_capacity(match events.size_hint() {
-            (min, max) => max.unwrap_or(min),
-        });
+            let mut out_events = Vec::with_capacity(match events.size_hint() {
+                (min, max) => max.unwrap_or(min),
+            });
 
-        for mut event in events {
-            match &mut event {
-                Event::Start(Tag::Heading(_level, None, _classes)) => {
-                    heading_text = String::new();
-                    header_start = Some(out_events.len());
-                }
-                Event::Text(text) if header_start.is_some() => heading_text += text,
-                Event::End(Tag::Heading(_level, end_fragment @ None, _classes))
-                    if header_start.is_some() =>
-                {
-                    let fragment = self.make_anchor(std::mem::take(&mut heading_text));
+            for mut event in events {
+                match &mut event {
+                    Event::Start(Tag::Heading(_level, None, _classes)) => {
+                        heading_text = String::new();
+                        header_start = Some(out_events.len());
+                    }
+                    Event::Text(text) if header_start.is_some() => heading_text += text,
+                    Event::End(Tag::Heading(_level, end_fragment @ None, _classes))
+                        if header_start.is_some() =>
+                    {
+                        let fragment = self.make_anchor(std::mem::take(&mut heading_text));
 
-                    *end_fragment = Some(fragment);
+                        *end_fragment = Some(fragment);
 
-                    match &mut out_events[header_start.unwrap()] {
-                        Event::Start(Tag::Heading(_level, start_fragment @ None, _classes)) => {
-                            *start_fragment = Some(fragment);
+                        match &mut out_events[header_start.unwrap()] {
+                            Event::Start(Tag::Heading(_level, start_fragment @ None, _classes)) => {
+                                *start_fragment = Some(fragment);
+                            }
+                            event => panic!("{event:?} is not a start header tag"),
                         }
-                        event => panic!("{event:?} is not a start header tag"),
+
+                        header_start = None;
+
+                        out_events.push(Event::Html(
+                            format!("<a class=\"header-anchor\" href=\"#{fragment}\">🔗</a>").into(),
+                        ));
                     }
 
-                    header_start = None;
-
-                    out_events.push(Event::Html(
-                        format!("<a class=\"header-anchor\" href=\"#{fragment}\">🔗</a>").into(),
-                    ));
+                    _ => (),
                 }
 
-                _ => (),
+                out_events.push(event.clone());
+                yield event
             }
-
-            out_events.push(event)
         }
-
-        out_events.into_iter()
     }
 
     fn make_anchor(&self, text: impl AsRef<str>) -> &str {
