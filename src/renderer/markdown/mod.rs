@@ -250,7 +250,8 @@ pub fn adjust_relative_links<'a>(
 
 #[cfg(test)]
 mod test {
-    use pulldown_cmark::{Event, HeadingLevel, Parser, Tag};
+    use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, html::push_html};
+    use quick_xml::events;
 
     use super::{extract_title_and_adjust_headers, heading_to_anchor};
 
@@ -296,5 +297,23 @@ This is not
             ]
         );
         assert_eq!(title, Some("This is the title".to_string()));
+    }
+
+    #[test]
+    fn add_anchors() {
+        let mut anchors = super::HeadingAnchors::new();
+        let events = Parser::new("# This is the title
+
+this is not the title
+
+## This is a section
+");
+        let events = anchors.add_anchors(events);
+
+        let mut html = String::new();
+        push_html(&mut html, events);
+
+        assert!(html.contains("<a class=\"header-anchor\" href=\"#this-is-the-title\">🔗</a>"));
+        assert!(html.contains("<a class=\"header-anchor\" href=\"#this-is-a-section\">🔗</a>"));
     }
 }
