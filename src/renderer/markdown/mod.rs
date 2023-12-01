@@ -152,47 +152,56 @@ impl HeadingAnchors {
     {
         gen {
             let mut heading_text = String::new();
-
-            let mut header_start = None;
-
-            let mut out_events = Vec::with_capacity(match events.size_hint() {
-                (min, max) => max.unwrap_or(min),
-            });
+            let mut event_buffer = Vec::new();
+            let mut in_heading = false;
 
             for mut event in events {
                 match &mut event {
                     Event::Start(Tag::Heading(_level, None, _classes)) => {
-                        heading_text = String::new();
-                        header_start = Some(out_events.len());
+                        in_heading = true;
+                        assert!(heading_text.is_empty());
+                        assert!(event_buffer.is_empty());
                     }
-                    Event::Text(text) if header_start.is_some() => heading_text += text,
+                    Event::Text(text) if in_heading => heading_text += text,
                     Event::End(Tag::Heading(_level, end_fragment @ None, _classes))
-                        if header_start.is_some() =>
+                        if in_heading =>
                     {
                         let fragment = self.make_anchor(std::mem::take(&mut heading_text));
 
                         *end_fragment = Some(fragment);
 
-                        match &mut out_events[header_start.unwrap()] {
+                        match &mut event_buffer[0] {
                             Event::Start(Tag::Heading(_level, start_fragment @ None, _classes)) => {
                                 *start_fragment = Some(fragment);
                             }
                             event => panic!("{event:?} is not a start header tag"),
                         }
 
-                        header_start = None;
+                        in_heading = false;
 
-                        out_events.push(Event::Html(
+                        // We have to use std::mem::take because otherwise we'd
+                        // be borrowing across a yield.
+                        //
+                        // Ideally we'd use drain(..), but that isn't possible
+                        // due to the borrowing.
+                        for event in std::mem::take(&mut event_buffer).into_iter() {
+                            yield event;
+                        }
+
+                        yield Event::Html(
                             format!("<a class=\"header-anchor\" href=\"#{fragment}\">🔗</a>")
                                 .into(),
-                        ));
+                        );
                     }
 
                     _ => (),
                 }
 
-                out_events.push(event.clone());
-                yield event
+                if in_heading {
+                    event_buffer.push(event.clone());
+                } else {
+                    yield event
+                }
             }
         }
     }
