@@ -132,6 +132,11 @@ fn promote_heading(level: HeadingLevel) -> HeadingLevel {
     }
 }
 
+/// [`HeadingAnchors`] is a processor that adds anchors to headings if they have
+/// not been manually specified.
+///
+/// Additionally, it will add a convenience 🔗 link at the end to go to the
+/// anchor.
 pub struct HeadingAnchors {
     anchors: Bump,
 }
