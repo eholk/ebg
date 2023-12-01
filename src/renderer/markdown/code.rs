@@ -29,7 +29,9 @@ impl CodeFormatter {
             self.syntax_set.find_syntax_by_extension(extension)
         });
 
-        let body = gen {
+        let lang = lang.lang().to_owned();
+        let lang_clone = lang.clone();
+        let body = gen move {
             match syntax {
                 Some(ss) => {
                     yield Event::Html(
@@ -45,39 +47,43 @@ impl CodeFormatter {
                 }
                 None => {
                     yield Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(
-                        lang.lang.unwrap_or("").to_owned().into(),
+                        lang.clone().into(),
                     )));
                     yield Event::Text(code.into());
                     yield Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(
-                        lang.lang.unwrap_or("").to_owned().into(),
+                        lang.into(),
                     )));
                 },
             }
         };
 
-        match lines {
-            Some(count) => {
-                let mut events = vec![
-                    Event::Html("<table class=\"codenum\"><tbody><tr><td>".into()),
-                    Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced("".into()))),
-                    Event::Text(
-                        (1..(count + 1))
-                            .map(|i| i.to_string())
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                            .into(),
-                    ),
-                    Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(
-                        lang.lang().to_owned().into(),
-                    ))),
-                    Event::Html("</td><td>".into()),
-                ];
-                events.extend(body);
-                events.push(Event::Html("</td></tr></tbody></table>".into()));
-                events
+        let lang = lang_clone;
+        gen move {
+            match lines {
+                Some(count) => {
+                    yield Event::Html("<table class=\"codenum\"><tbody><tr><td>".into());
+                    yield Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced("".into())));
+                    yield Event::Text(
+                            (1..(count + 1))
+                                .map(|i| i.to_string())
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                                .into(),
+                        );
+                    yield Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(
+                            lang.into(),
+                        )));
+                    yield Event::Html("</td><td>".into());
+                    for e in body {
+                        yield e;
+                    }
+                    yield Event::Html("</td></tr></tbody></table>".into());
+                }
+                None => for e in body {
+                    yield e;
+                },
             }
-            None => body.collect(),
-        }.into_iter()
+        }
     }
 
     pub fn format_codeblocks<'a>(
@@ -128,6 +134,7 @@ impl Default for CodeFormatter {
     }
 }
 
+#[derive(Clone)]
 struct LangOptions<'a> {
     lang: Option<&'a str>,
     line_numbers: bool,
