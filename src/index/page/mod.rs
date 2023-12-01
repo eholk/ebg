@@ -7,7 +7,7 @@ use std::{
 };
 
 use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeZone, Utc};
-use miette::{Diagnostic, Report};
+use miette::Diagnostic;
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::fs::read_to_string;
@@ -15,8 +15,6 @@ use tokio::fs::read_to_string;
 use self::parsing_helpers::{
     deserialize_comma_separated_list, deserialize_date, find_frontmatter_delimiter,
 };
-
-use super::IndexError;
 
 mod parsing_helpers;
 
@@ -262,7 +260,7 @@ fn url_from_page_path(path: &Path) -> PathBuf {
 }
 
 #[derive(Debug, Diagnostic, Error, PartialEq)]
-enum ParseFilenameError {
+pub enum ParseFilenameError {
     #[error("filename has no extension")]
     #[diagnostic(help("make sure the file extension is .md or .html"))]
     NoExtension,

@@ -6,7 +6,7 @@ use std::{
 };
 
 use futures::StreamExt;
-use miette::{miette, Diagnostic, Severity};
+use miette::{Diagnostic, Severity};
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::fs;
