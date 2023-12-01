@@ -21,7 +21,7 @@ impl CodeFormatter {
         }
     }
 
-    fn highlight_code(&self, code: String, lang: LangOptions<'_>) -> Vec<Event<'_>> {
+    fn highlight_code(&self, code: String, lang: LangOptions<'_>) -> impl Iterator<Item = Event<'_>> {
         let lines: Option<usize> = lang.line_numbers.then(|| code.lines().map(|_| 1).sum());
 
         let syntax = lang.lang.and_then(|lang| {
@@ -29,28 +29,30 @@ impl CodeFormatter {
             self.syntax_set.find_syntax_by_extension(extension)
         });
 
-        let body = match syntax {
-            Some(ss) => {
-                vec![Event::Html(
-                    highlighted_html_for_string(
-                        &code,
-                        &self.syntax_set,
-                        ss,
-                        &self.theme_set.themes["InspiredGitHub"],
-                    )
-                    .unwrap()
-                    .into(),
-                )]
+        let body = gen {
+            match syntax {
+                Some(ss) => {
+                    yield Event::Html(
+                        highlighted_html_for_string(
+                            &code,
+                            &self.syntax_set,
+                            ss,
+                            &self.theme_set.themes["InspiredGitHub"],
+                        )
+                        .unwrap()
+                        .into(),
+                    );
+                }
+                None => {
+                    yield Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(
+                        lang.lang.unwrap_or("").to_owned().into(),
+                    )));
+                    yield Event::Text(code.into());
+                    yield Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(
+                        lang.lang.unwrap_or("").to_owned().into(),
+                    )));
+                },
             }
-            None => vec![
-                Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(
-                    lang.lang.unwrap_or("").to_owned().into(),
-                ))),
-                Event::Text(code.into()),
-                Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(
-                    lang.lang.unwrap_or("").to_owned().into(),
-                ))),
-            ],
         };
 
         match lines {
@@ -74,8 +76,8 @@ impl CodeFormatter {
                 events.push(Event::Html("</td></tr></tbody></table>".into()));
                 events
             }
-            None => body,
-        }
+            None => body.collect(),
+        }.into_iter()
     }
 
     pub fn format_codeblocks<'a>(
@@ -96,7 +98,7 @@ impl CodeFormatter {
                     match lang {
                         CodeBlockKind::Fenced(lang) => {
                             let lang = parse_lang(lang.as_ref());
-                            self.highlight_code(code, lang)
+                            self.highlight_code(code, lang).collect()
                         }
                         CodeBlockKind::Indented => vec![
                             Event::Start(Tag::CodeBlock(lang.clone())),
