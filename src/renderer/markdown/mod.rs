@@ -183,7 +183,8 @@ impl HeadingAnchors {
                         header_start = None;
 
                         out_events.push(Event::Html(
-                            format!("<a class=\"header-anchor\" href=\"#{fragment}\">🔗</a>").into(),
+                            format!("<a class=\"header-anchor\" href=\"#{fragment}\">🔗</a>")
+                                .into(),
                         ));
                     }
 
@@ -251,7 +252,7 @@ pub fn adjust_relative_links<'a>(
 
 #[cfg(test)]
 mod test {
-    use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, html::push_html};
+    use pulldown_cmark::{html::push_html, Event, HeadingLevel, Parser, Tag};
 
     use super::{extract_title_and_adjust_headers, heading_to_anchor};
 
@@ -302,12 +303,14 @@ This is not
     #[test]
     fn add_anchors() {
         let mut anchors = super::HeadingAnchors::new();
-        let events = Parser::new("# This is the title
+        let events = Parser::new(
+            "# This is the title
 
 this is not the title
 
 ## This is a section
-");
+",
+        );
         let events = anchors.add_anchors(events);
 
         let mut html = String::new();
