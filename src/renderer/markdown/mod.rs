@@ -251,7 +251,6 @@ pub fn adjust_relative_links<'a>(
 #[cfg(test)]
 mod test {
     use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, html::push_html};
-    use quick_xml::events;
 
     use super::{extract_title_and_adjust_headers, heading_to_anchor};
 

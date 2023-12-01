@@ -87,3 +87,26 @@ where
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pulldown_cmark::{Options, Parser};
+
+    #[test]
+    fn test_collect_footnotes() {
+        let input = r##"
+This is a footnote[^1].
+
+[^1]: this is the footnote text
+
+The footnote should come after this.
+"##;
+        let events = Parser::new_ext(input, Options::ENABLE_FOOTNOTES);
+        let events = collect_footnotes(events);
+        assert!(matches!(
+            events.last(),
+            Some(Event::End(Tag::FootnoteDefinition(_)))
+        ));
+    }
+}
