@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 use std::fs;
 use tera::Tera;
 use thiserror::Error;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::{
     index::{PageMetadata, SiteMetadata},
@@ -102,6 +102,14 @@ impl<'a> GeneratorContext<'a> {
                 old.path().display()
             );
             fs::rename(&self.options.destination, &old.path().join("publish"))
+                .or_else(|e| {
+                    warn!(
+                        "failed to move old destination directory, falling back on regular removal: {}",
+                        e);
+                    // If the rename fails, try to remove the destination directory
+                    // and hope that it's empty.
+                    fs::remove_dir_all(&self.options.destination)
+                })
                 .map_err(|e| GeneratorError::CleanDestDir(self.options.destination.clone(), e))?;
             Some(tokio::spawn(async move {
                 drop(old);
