@@ -107,7 +107,6 @@ impl<'a> GeneratorContext<'a> {
                         "failed to move old destination directory, falling back on regular removal: {}",
                         e);
                     // If the rename fails, try to remove the destination directory
-                    // and hope that it's empty.
                     fs::remove_dir_all(&self.options.destination)
                 })
                 .map_err(|e| GeneratorError::CleanDestDir(self.options.destination.clone(), e))?;
