@@ -21,7 +21,7 @@ impl CodeFormatter {
         }
     }
 
-    fn highlight_code(&self, code: String, lang: LangOptions<'_>) -> impl Iterator<Item = Event<'_>> {
+    gen fn highlight_code(&self, code: String, lang: LangOptions<'_>) -> Event<'_> {
         let lines: Option<usize> = lang.line_numbers.then(|| code.lines().map(|_| 1).sum());
 
         let syntax = lang.lang.and_then(|lang| {
@@ -58,31 +58,29 @@ impl CodeFormatter {
         };
 
         let lang = lang_clone;
-        gen move {
-            match lines {
-                Some(count) => {
-                    yield Event::Html("<table class=\"codenum\"><tbody><tr><td>".into());
-                    yield Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced("".into())));
-                    yield Event::Text(
-                            (1..(count + 1))
-                                .map(|i| i.to_string())
-                                .collect::<Vec<_>>()
-                                .join("\n")
-                                .into(),
-                        );
-                    yield Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(
-                            lang.into(),
-                        )));
-                    yield Event::Html("</td><td>".into());
-                    for e in body {
-                        yield e;
-                    }
-                    yield Event::Html("</td></tr></tbody></table>".into());
-                }
-                None => for e in body {
+        match lines {
+            Some(count) => {
+                yield Event::Html("<table class=\"codenum\"><tbody><tr><td>".into());
+                yield Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced("".into())));
+                yield Event::Text(
+                        (1..(count + 1))
+                            .map(|i| i.to_string())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                            .into(),
+                    );
+                yield Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(
+                        lang.into(),
+                    )));
+                yield Event::Html("</td><td>".into());
+                for e in body {
                     yield e;
-                },
+                }
+                yield Event::Html("</td></tr></tbody></table>".into());
             }
+            None => for e in body {
+                yield e;
+            },
         }
     }
 

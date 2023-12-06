@@ -143,65 +143,63 @@ impl HeadingAnchors {
         }
     }
 
-    pub fn add_anchors<'a, 'b>(
+    pub gen fn add_anchors<'a, 'b>(
         &'a mut self,
         events: impl Iterator<Item = Event<'b>>,
-    ) -> impl Iterator<Item = Event<'a>>
+    ) -> Event<'a>
     where
         'b: 'a,
     {
-        gen {
-            let mut heading_text = String::new();
-            let mut event_buffer = Vec::new();
-            let mut in_heading = false;
+        let mut heading_text = String::new();
+        let mut event_buffer = Vec::new();
+        let mut in_heading = false;
 
-            for mut event in events {
-                match &mut event {
-                    Event::Start(Tag::Heading(_level, None, _classes)) => {
-                        in_heading = true;
-                        assert!(heading_text.is_empty());
-                        assert!(event_buffer.is_empty());
-                    }
-                    Event::Text(text) if in_heading => heading_text += text,
-                    Event::End(Tag::Heading(_level, end_fragment @ None, _classes))
-                        if in_heading =>
-                    {
-                        let fragment = self.make_anchor(std::mem::take(&mut heading_text));
+        for mut event in events {
+            match &mut event {
+                Event::Start(Tag::Heading(_level, None, _classes)) => {
+                    in_heading = true;
+                    assert!(heading_text.is_empty());
+                    assert!(event_buffer.is_empty());
+                }
+                Event::Text(text) if in_heading => heading_text += text,
+                Event::End(Tag::Heading(_level, end_fragment @ None, _classes))
+                    if in_heading =>
+                {
+                    let fragment = self.make_anchor(std::mem::take(&mut heading_text));
 
-                        *end_fragment = Some(fragment);
+                    *end_fragment = Some(fragment);
 
-                        match &mut event_buffer[0] {
-                            Event::Start(Tag::Heading(_level, start_fragment @ None, _classes)) => {
-                                *start_fragment = Some(fragment);
-                            }
-                            event => panic!("{event:?} is not a start header tag"),
+                    match &mut event_buffer[0] {
+                        Event::Start(Tag::Heading(_level, start_fragment @ None, _classes)) => {
+                            *start_fragment = Some(fragment);
                         }
-
-                        in_heading = false;
-
-                        // We have to use std::mem::take because otherwise we'd
-                        // be borrowing across a yield.
-                        //
-                        // Ideally we'd use drain(..), but that isn't possible
-                        // due to the borrowing.
-                        for event in std::mem::take(&mut event_buffer).into_iter() {
-                            yield event;
-                        }
-
-                        yield Event::Html(
-                            format!("<a class=\"header-anchor\" href=\"#{fragment}\">🔗</a>")
-                                .into(),
-                        );
+                        event => panic!("{event:?} is not a start header tag"),
                     }
 
-                    _ => (),
+                    in_heading = false;
+
+                    // We have to use std::mem::take because otherwise we'd
+                    // be borrowing across a yield.
+                    //
+                    // Ideally we'd use drain(..), but that isn't possible
+                    // due to the borrowing.
+                    for event in std::mem::take(&mut event_buffer).into_iter() {
+                        yield event;
+                    }
+
+                    yield Event::Html(
+                        format!("<a class=\"header-anchor\" href=\"#{fragment}\">🔗</a>")
+                            .into(),
+                    );
                 }
 
-                if in_heading {
-                    event_buffer.push(event.clone());
-                } else {
-                    yield event
-                }
+                _ => (),
+            }
+
+            if in_heading {
+                event_buffer.push(event.clone());
+            } else {
+                yield event
             }
         }
     }
