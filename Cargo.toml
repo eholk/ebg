@@ -43,3 +43,4 @@ tokio-stream = { version = "0.1.14", features = ["fs"] }
 toml = "0.8.8"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["ansi", "env-filter"] }
+url = "2.5.0"
