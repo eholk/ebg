@@ -16,7 +16,7 @@ chrono = { version = "0.4.31", features = ["serde"] }
 clap = { version = "4.4.11", features = ["derive"] }
 futures = "0.3.29"
 futures-concurrency = "7.4.3"
-hyper = { version = "0.14.27", features = ["http1", "server", "tcp"] }
+hyper = { version = "0.14.28", features = ["http1", "server", "tcp"] }
 indicatif = "0.17.7"
 miette = { version = "5.10.0", features = ["fancy"] }
 notify = "6.1.1"
