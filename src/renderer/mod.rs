@@ -1,8 +1,13 @@
+use std::sync::Mutex;
+
 use miette::Diagnostic;
 use rayon::prelude::*;
 use thiserror::Error;
 
-use crate::index::{PageMetadata, PageSource, SiteIndex, SiteMetadata, SourceFormat};
+use crate::{
+    diagnostics::{DiagnosticContext, ErrorSet},
+    index::{PageMetadata, PageSource, SiteIndex, SiteMetadata, SourceFormat},
+};
 
 use self::markdown::render_markdown;
 
@@ -72,16 +77,14 @@ impl<'a> SiteMetadata for RenderedSite<'a> {
 impl SiteIndex {
     pub fn render(&self) -> Result<RenderedSite, RenderError> {
         let code_formatter = CodeFormatter::new();
-        let ctx = RenderContext {
-            site: self,
-            code_formatter: &code_formatter,
-        };
-        let pages = self
-            .all_pages()
-            .collect::<Vec<_>>()
-            .par_iter()
-            .map(|page| page.render(&ctx))
-            .collect::<Result<Vec<_>, _>>()?;
+        let pages = RenderContext::run_dcx(&self, &code_formatter, |ctx| {
+            self.all_pages()
+                .collect::<Vec<_>>()
+                .par_iter()
+                .map(|page| page.render(&ctx))
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(RenderError::PageRenderingErrors)?;
         Ok(RenderedSite {
             source: self,
             pages,
@@ -159,20 +162,56 @@ impl RenderedPage {
 pub struct RenderContext<'a> {
     site: &'a SiteIndex,
     code_formatter: &'a CodeFormatter,
+    dcx: Mutex<&'a mut DiagnosticContext>,
 }
 
 impl<'a> RenderContext<'a> {
-    pub fn new(site: &'a SiteIndex, code_formatter: &'a CodeFormatter) -> Self {
+    pub fn new(
+        site: &'a SiteIndex,
+        code_formatter: &'a CodeFormatter,
+        dcx: &'a mut DiagnosticContext,
+    ) -> Self {
         Self {
             site,
             code_formatter,
+            dcx: dcx.into(),
         }
+    }
+
+    pub fn run_dcx<T, E>(
+        site: &SiteIndex,
+        code_formatter: &CodeFormatter,
+        f: impl FnOnce(&RenderContext<'_>) -> Result<T, E>,
+    ) -> Result<T, ErrorSet>
+    where
+        E: Diagnostic + Send + Sync + 'static,
+    {
+        DiagnosticContext::with(|dcx| {
+            let dcx = dcx.into();
+            let mut rcx = RenderContext {
+                site,
+                code_formatter,
+                dcx,
+            };
+            f(&mut rcx)
+        })
+    }
+
+    /// Runs a closure under a new diagnostic context
+    pub fn run_with_new_dcx<T, E>(
+        &self,
+        f: impl FnOnce(&RenderContext<'_>) -> Result<T, E>,
+    ) -> Result<T, ErrorSet>
+    where
+        E: Diagnostic + Send + Sync + 'static,
+    {
+        Self::run_dcx(self.site, self.code_formatter, f)
     }
 }
 
 pub trait RenderSource {
     /// Renders the source to HTML
-    fn render(&self, ctx: &RenderContext<'_>) -> Result<RenderedPage, RenderError>;
+    fn render(&self, ctx: &RenderContext) -> Result<RenderedPage, RenderError>;
 }
 
 impl RenderSource for PageSource {
@@ -200,7 +239,10 @@ impl RenderSource for PageSource {
 
 /// Describes a failure to render something
 #[derive(Diagnostic, Debug, Error)]
-pub enum RenderError {}
+pub enum RenderError {
+    #[error("failed to render pages")]
+    PageRenderingErrors(ErrorSet),
+}
 
 #[cfg(test)]
 mod test {
@@ -227,11 +269,7 @@ this is *not an excerpt*",
 
         let site = SiteIndex::default();
         let code_formatter = CodeFormatter::new();
-        let rcx = RenderContext {
-            site: &site,
-            code_formatter: &code_formatter,
-        };
-        let page = page.render(&rcx)?;
+        let page = RenderContext::run_dcx(&site, &code_formatter, |rcx| page.render(&rcx))?;
 
         assert_eq!(
             page.rendered_excerpt(),
@@ -260,11 +298,7 @@ categories:
         );
         let site = SiteIndex::default();
         let code_formatter = CodeFormatter::new();
-        let rcx = RenderContext {
-            site: &site,
-            code_formatter: &code_formatter,
-        };
-        let post = post.render(&rcx)?;
+        let post = RenderContext::run_dcx(&site, &code_formatter, |rcx| post.render(&rcx))?;
         assert_eq!(post.title(), "This is the title");
         Ok(())
     }
@@ -283,16 +317,13 @@ categories:
             "[hello](./2012-10-14-hello.md)",
         ));
         let code_formatter = CodeFormatter::new();
-        let rcx = RenderContext {
-            site: &site,
-            code_formatter: &code_formatter,
-        };
 
         let render_page = site
             .find_page_by_source_path(&PathBuf::from("_posts/2013-10-14-page2.md"))
             .unwrap();
 
-        let rendered_page = render_page.render(&rcx)?;
+        let rendered_page =
+            RenderContext::run_dcx(&site, &code_formatter, |rcx| render_page.render(&rcx))?;
 
         assert_eq!(
             rendered_page.rendered_contents(),
@@ -317,17 +348,12 @@ categories:
             "[hello](./2012-10-14-hello.md#title)",
         ));
         let code_formatter = CodeFormatter::new();
-        let rcx = RenderContext {
-            site: &site,
-            code_formatter: &code_formatter,
-        };
-
         let render_page = site
             .find_page_by_source_path(&PathBuf::from("_posts/2013-10-14-page2.md"))
             .unwrap();
 
-        let rendered_page = render_page.render(&rcx)?;
-
+        let rendered_page =
+            RenderContext::run_dcx(&site, &code_formatter, |rcx| render_page.render(&rcx))?;
         assert_eq!(
             rendered_page.rendered_contents(),
             "<p><a href=\"/blog/2012/10/14/hello/#title\">hello</a></p>\n<hr />\n"

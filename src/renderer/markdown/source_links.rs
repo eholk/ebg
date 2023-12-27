@@ -1,6 +1,6 @@
 use std::fmt::Formatter;
 
-use miette::Diagnostic;
+use miette::{diagnostic, Diagnostic};
 use pulldown_cmark::{CowStr, Event, Tag};
 use thiserror::Error;
 use tracing::debug;
@@ -24,10 +24,10 @@ use crate::{
 
 /// Finds links to source files and replaces them with links to the generated page
 pub fn adjust_relative_links<'a>(
-    markdown: impl Iterator<Item = Event<'a>>,
-    page: &'a PageSource,
-    rcx: &'a RenderContext<'_>,
-) -> impl Iterator<Item = Event<'a>> {
+    markdown: Vec<Event<'a>>,
+    page: &PageSource,
+    rcx: &RenderContext<'_>,
+) -> Vec<Event<'a>> {
     let map_url = |url: &CowStr<'_>| {
         let url = LinkDest::parse(url).ok()?;
         let anchor = url.fragment();
@@ -39,7 +39,15 @@ pub fn adjust_relative_links<'a>(
                 rcx.site.root_dir().join(url.path())
             };
             debug!("mapped path to {}", path.display());
-            let page = rcx.site.find_page_by_source_path(&path)?;
+            let Some(page) = rcx.site.find_page_by_source_path(&path) else {
+                debug!("no page found for {}", path.display());
+                rcx.dcx.lock().unwrap().record(diagnostic!(
+                    severity = miette::Severity::Warning,
+                    help = "did you mean to link to an external page?",
+                    "Could not find target for apparent source link to `{url}`",
+                ));
+                return None;
+            };
             let url = format!(
                 "{}/{}{}",
                 rcx.site.base_url(),
@@ -53,17 +61,20 @@ pub fn adjust_relative_links<'a>(
         }
     };
 
-    markdown.map(move |event| match event {
-        Event::Start(Tag::Link(link_type, url, title)) => {
-            let url = map_url(&url).unwrap_or_else(|| url.to_string());
-            Event::Start(Tag::Link(link_type, url.into(), title))
-        }
-        Event::End(Tag::Link(link_type, url, title)) => {
-            let url = map_url(&url).unwrap_or_else(|| url.to_string());
-            Event::End(Tag::Link(link_type, url.into(), title))
-        }
-        event => event,
-    })
+    markdown
+        .into_iter()
+        .map(move |event| match event {
+            Event::Start(Tag::Link(link_type, url, title)) => {
+                let url = map_url(&url).unwrap_or_else(|| url.to_string());
+                Event::Start(Tag::Link(link_type, url.into(), title))
+            }
+            Event::End(Tag::Link(link_type, url, title)) => {
+                let url = map_url(&url).unwrap_or_else(|| url.to_string());
+                Event::End(Tag::Link(link_type, url.into(), title))
+            }
+            event => event,
+        })
+        .collect()
 }
 
 #[derive(Debug)]

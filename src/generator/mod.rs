@@ -268,8 +268,9 @@ impl ToValue for RenderedSite<'_> {
 #[cfg(test)]
 mod test {
     use crate::{
+        diagnostics::DiagnosticContext,
         index::{PageSource, SiteIndex, SourceFormat},
-        renderer::{CodeFormatter, RenderContext, RenderSource, RenderedPageRef},
+        renderer::{CodeFormatter, RenderContext, RenderError, RenderSource, RenderedPageRef},
     };
 
     use super::ToValue;
@@ -291,10 +292,12 @@ this is *also an excerpt*",
 
         let site = SiteIndex::default();
         let fmt = CodeFormatter::new();
-        let rcx = RenderContext::new(&site, &fmt);
-        let rendered_page = page.render(&rcx)?;
-        let page = RenderedPageRef::new(&page, &rendered_page);
-        let page = page.value();
+        let page = DiagnosticContext::with(|dcx| {
+            let rcx = RenderContext::new(&site, &fmt, dcx);
+            let rendered_page = page.render(&rcx)?;
+            let page = RenderedPageRef::new(&page, &rendered_page);
+            Ok::<_, RenderError>(page.value())
+        })?;
 
         assert_eq!(
             page["excerpt"],

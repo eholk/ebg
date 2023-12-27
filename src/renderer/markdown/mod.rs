@@ -36,10 +36,10 @@ pub(super) fn render_markdown(
 
     let (parser, title) = extract_title_and_adjust_headers(parser);
 
-    let parser = adjust_relative_links(parser, source, rcx);
+    let parser = adjust_relative_links(parser.collect(), source, rcx);
 
     let mut anchors = HeadingAnchors::new();
-    let parser = anchors.add_anchors(parser);
+    let parser = anchors.add_anchors(parser.into_iter());
 
     let mut markdown_buffer = String::with_capacity(contents.len() * 2);
     pulldown_cmark::html::push_html(

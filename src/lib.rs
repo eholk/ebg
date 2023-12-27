@@ -39,6 +39,8 @@ pub mod index;
 pub mod renderer;
 pub mod generator;
 
+mod diagnostics;
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(thiserror::Error, Debug, Diagnostic)]
