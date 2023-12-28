@@ -1,5 +1,6 @@
 use std::fmt::Formatter;
 
+use email_address_parser::EmailAddress;
 use miette::{diagnostic, Diagnostic};
 use pulldown_cmark::{CowStr, Event, Tag};
 use thiserror::Error;
@@ -31,10 +32,12 @@ pub fn adjust_relative_links<'a>(
     let map_url = |url: &CowStr<'_>| {
         let url = LinkDest::parse(url).ok()?;
         let anchor = url.fragment();
-        if url.is_local() {
-            debug!("found local link to {url}");
+        if url.is_possible_source_link() {
+            debug!("found possible source link to {url}");
             let path = if url.is_relative() {
-                page.source_path().parent()?.join(url.path())
+                let parent = page.source_path().parent()?;
+                debug!("searching relative to `{}`", parent.display());
+                parent.join(url.path())
             } else {
                 rcx.site.root_dir().join(url.path())
             };
@@ -49,8 +52,8 @@ pub fn adjust_relative_links<'a>(
                 return None;
             };
             let url = format!(
-                "{}/{}{}",
-                rcx.site.base_url(),
+                "/{}{}",
+                // rcx.site.base_url(),
                 page.url(),
                 anchor.map(|a| format!("#{}", a)).unwrap_or_default()
             );
@@ -81,12 +84,19 @@ pub fn adjust_relative_links<'a>(
 enum LinkDest {
     External(Url),
     Local(String),
+    /// The link is an email address
+    ///
+    /// The first field contains the parsed email address and the second
+    /// contains the source.
+    Email(EmailAddress, String),
 }
 
 impl LinkDest {
     fn parse(s: &str) -> Result<Self, LinkDestError> {
         if let Ok(url) = Url::parse(s) {
             Ok(Self::External(url))
+        } else if let Some(email) = EmailAddress::parse(s, None) {
+            Ok(Self::Email(email, s.to_string()))
         } else {
             Ok(Self::Local(s.to_string()))
         }
@@ -94,30 +104,68 @@ impl LinkDest {
 
     fn is_local(&self) -> bool {
         match self {
-            Self::External(_) => false,
+            Self::External(_) | Self::Email(_, _) => false,
             Self::Local(_) => true,
         }
     }
 
     fn is_relative(&self) -> bool {
         match self {
-            Self::External(_) => false,
+            Self::External(_) | Self::Email(_, _) => false,
             Self::Local(s) => !s.starts_with('/'),
         }
+    }
+
+    fn is_absolute(&self) -> bool {
+        !self.is_relative()
     }
 
     fn fragment(&self) -> Option<&str> {
         match self {
             Self::External(url) => url.fragment(),
             Self::Local(s) => s.rsplit_once('#').map(|(_, f)| f),
+            Self::Email(_, _) => None,
         }
     }
 
     fn path(&self) -> &str {
         match self {
             Self::External(url) => url.path(),
-            Self::Local(s) => s.split_once('#').map_or(s, |(p, _)| p),
+            Self::Local(s) => {
+                let path = s.split_once('#').map_or(s.as_str(), |(p, _)| p);
+                if path.starts_with("./") {
+                    &path[2..]
+                } else {
+                    path
+                }
+            }
+            Self::Email(_, source) => &source,
         }
+    }
+
+    /// Determines whether a reference could potentially be a link to a source
+    /// file that's processed by EBG.
+    fn is_possible_source_link(&self) -> bool {
+        if !self.is_local() {
+            return false;
+        }
+        if self.is_absolute() {
+            return false;
+        }
+
+        let path = self.path();
+        if path.is_empty() {
+            return false;
+        }
+        if path.ends_with('/') {
+            return false;
+        }
+        if path.ends_with(".md") {
+            return true;
+        }
+
+        // err on the side of too many source links.
+        true
     }
 }
 
@@ -126,6 +174,7 @@ impl std::fmt::Display for LinkDest {
         match self {
             Self::External(url) => write!(f, "{}", url),
             Self::Local(s) => write!(f, "{}", s),
+            Self::Email(_, source) => write!(f, "{}", source),
         }
     }
 }
@@ -156,6 +205,10 @@ mod test {
         assert!(dest.is_relative());
 
         let dest = LinkDest::parse("../foo/bar")?;
+        assert!(matches!(dest, LinkDest::Local(_)));
+        assert!(dest.is_relative());
+
+        let dest = LinkDest::parse("./testimonials.md")?;
         assert!(matches!(dest, LinkDest::Local(_)));
         assert!(dest.is_relative());
 
@@ -192,6 +245,32 @@ mod test {
 
         let dest = LinkDest::parse("../foo/bar")?;
         assert_eq!(dest.path(), "../foo/bar");
+
+        let dest = LinkDest::parse("./testimonials.md")?;
+        assert_eq!(dest.path(), "testimonials.md");
+
+        Ok(())
+    }
+
+    #[test]
+    fn is_possible_source_link() -> miette::Result<()> {
+        let patterns = [
+            ("https://example.com", false),
+            ("./testimonials.md", true),
+            ("#gat-desugaring", false),
+            (
+                "/blog/2013/09/10/how-to-write-a-simple-scheme-debugger/",
+                false,
+            ),
+            ("/papers/dissertation.pdf", false),
+            ("eric@theincredibleholk.org", false),
+            ("/images/whereabouts-clock-drawing.pdf", false),
+        ];
+
+        for (pattern, expected) in patterns {
+            let dest = LinkDest::parse(pattern)?;
+            assert_eq!(dest.is_possible_source_link(), expected, "{}", pattern);
+        }
 
         Ok(())
     }

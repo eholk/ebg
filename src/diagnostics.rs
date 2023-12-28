@@ -5,6 +5,7 @@
 
 use miette::{Diagnostic, IntoDiagnostic};
 use thiserror::Error;
+use tracing::debug;
 
 pub struct DiagnosticContext {
     diagnostics: Vec<miette::Report>,
@@ -23,11 +24,19 @@ impl DiagnosticContext {
 
         match f(&mut this).into_diagnostic() {
             Ok(value) => {
-                let warnings = WarningSet {
-                    warnings: this.diagnostics,
+                if this.any_errors {
+                    return Err(ErrorSet {
+                        errors: this.diagnostics,
+                    });
                 };
-                let warnings = miette::Report::new(warnings);
-                eprint!("{}", warnings);
+                if !this.diagnostics.is_empty() {
+                    debug!("generating report for {} warnings", this.diagnostics.len());
+                    let warnings = WarningSet {
+                        warnings: this.diagnostics,
+                    };
+                    let warnings = miette::Report::new(warnings);
+                    eprintln!("{:?}", warnings);
+                }
                 Ok(value)
             }
             Err(error) => {
@@ -47,6 +56,7 @@ impl DiagnosticContext {
     }
 
     fn record_report(&mut self, report: miette::Report) {
+        debug!("recording diagnostic: {}", report);
         if <_ as AsRef<(dyn Diagnostic + 'static)>>::as_ref(&report)
             .severity()
             .unwrap_or(miette::Severity::Error)

@@ -385,6 +385,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -485,6 +495,7 @@ dependencies = [
  "bumpalo",
  "chrono",
  "clap",
+ "email-address-parser",
  "futures",
  "futures-concurrency",
  "hyper",
@@ -516,6 +527,19 @@ name = "either"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
+
+[[package]]
+name = "email-address-parser"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7fe19a4967eca30062be4abaf813d929ba48b3bfb21830367f7e1baae37f213a"
+dependencies = [
+ "console_error_panic_hook",
+ "pest",
+ "pest_derive",
+ "quick-xml 0.18.1",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "encode_unicode"
@@ -1460,6 +1484,15 @@ dependencies = [
  "getopts",
  "memchr",
  "unicase",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3cc440ee4802a86e357165021e3e255a9143724da31db1e2ea540214c96a0f82"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
