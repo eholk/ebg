@@ -24,6 +24,8 @@ content = [
 ]
 ```
 
+For more detail about `Site.toml`, see [Site Configuration](site-config.md).
+
 ## Anatomy of a Page and Post
 
 Pages may be written as HTML or Markdown.
