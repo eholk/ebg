@@ -61,6 +61,10 @@ impl<'a> SiteMetadata for RenderedSite<'a> {
         self.source.author()
     }
 
+    fn author_email(&self) -> Option<&str> {
+        self.source.author_email()
+    }
+
     fn root_dir(&self) -> &std::path::PathBuf {
         self.source.root_dir()
     }

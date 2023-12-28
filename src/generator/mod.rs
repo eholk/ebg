@@ -192,6 +192,7 @@ impl<'a> GeneratorContext<'a> {
                 let mut context = tera::Context::new();
                 context.insert("site", &site.value());
                 context.insert("page", &page.value());
+                context.insert("theme", &site.config().theme_opts);
 
                 let content_template = site
                     .config()
@@ -247,9 +248,15 @@ impl ToValue for RenderedPageRef<'_> {
 
 impl ToValue for RenderedSite<'_> {
     fn value(&self) -> Value {
-        let mut site = [("url".to_string(), json!(self.base_url()))]
-            .into_iter()
-            .collect::<Map<_, _>>();
+        // Add metadata from Site.toml
+        let mut site = [
+            ("url".to_string(), json!(self.base_url())),
+            ("title".to_string(), json!(self.title())),
+            ("author".to_string(), json!(self.author())),
+            ("author_email".to_string(), json!(self.author_email())),
+        ]
+        .into_iter()
+        .collect::<Map<_, _>>();
 
         let mut posts = self.posts().collect::<Vec<_>>();
         posts.sort_by_key(|b| std::cmp::Reverse(b.publish_date()));
