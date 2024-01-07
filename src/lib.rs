@@ -40,6 +40,7 @@ pub mod renderer;
 pub mod generator;
 
 mod diagnostics;
+mod wayback;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
