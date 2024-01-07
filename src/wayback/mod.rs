@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use miette::Diagnostic;
 use serde::Deserialize;
 use thiserror::Error;
+use tracing::debug;
 use url::Url;
 
 /// The top level client for the Wayback Machine's Save Page Now API.
@@ -41,6 +42,7 @@ impl Wayback {
     /// On success, returns a [`Job`] object that can be used to check the
     /// status.
     pub async fn begin_save_page(&self, url: &Url) -> Result<Job, Error> {
+        debug!(?url, "beginning save page job");
         let response = self
             .client
             .post("https://web.archive.org/save")
@@ -54,6 +56,7 @@ impl Wayback {
             .await?;
 
         let job = response.json().await?;
+        debug!(?job, "save page job started");
 
         Ok(job)
     }
