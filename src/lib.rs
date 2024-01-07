@@ -35,12 +35,12 @@
 use generator::GeneratorError;
 use miette::Diagnostic;
 
+pub mod generator;
 pub mod index;
 pub mod renderer;
-pub mod generator;
+pub mod wayback;
 
 mod diagnostics;
-mod wayback;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

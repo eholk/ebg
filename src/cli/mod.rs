@@ -3,6 +3,7 @@
 pub mod about;
 pub mod build;
 pub mod new_post;
+pub mod wayback;
 
 /// Describes a command that can be run from the command line.
 ///

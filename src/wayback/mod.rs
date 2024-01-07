@@ -10,8 +10,9 @@
 //! For now this does not aim to be a complete implementation of the API, just
 //! enough to support the features EBG needs.
 
-use std::{collections::HashMap, time::Duration};
+use std::collections::HashMap;
 
+use miette::Diagnostic;
 use serde::Deserialize;
 use thiserror::Error;
 use url::Url;
@@ -56,9 +57,27 @@ impl Wayback {
 
         Ok(job)
     }
+
+    pub async fn job_status(&self, job: &Job) -> Result<Status, Error> {
+        let response = self
+            .client
+            .post("https://web.archive.org/save/status")
+            .header(
+                "Authorization",
+                format!("LOW {}:{}", self.access_key, self.secret_key),
+            )
+            .header("Accept", "application/json")
+            .form(&[("job_id", &job.job_id)])
+            .send()
+            .await?;
+
+        let status = response.json().await?;
+
+        Ok(status)
+    }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum Error {
     #[error("HTTP error")]
     HttpError(
@@ -68,25 +87,37 @@ pub enum Error {
     ),
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Job {
     url: Option<Url>,
     job_id: String,
     message: Option<String>,
 }
 
-#[derive(Deserialize)]
+impl Job {
+    pub fn job_id(&self) -> &str {
+        self.job_id.as_ref()
+    }
+}
+
+#[derive(Deserialize, Debug)]
 pub struct Status {
-    counters: HashMap<String, u32>,
-    delay_wb_availability: bool,
-    duration_sec: f64,
-    http_status: u16,
+    counters: Option<HashMap<String, u32>>,
+    delay_wb_availability: Option<bool>,
+    duration_sec: Option<f64>,
+    http_status: Option<u16>,
     job_id: String,
-    original_url: Url,
-    outlinks: Vec<Url>,
-    resources: Vec<Url>,
+    original_url: Option<Url>,
+    outlinks: Option<Vec<Url>>,
+    resources: Option<Vec<Url>>,
     status: String,
-    timestamp: String,
+    timestamp: Option<String>,
+}
+
+impl Status {
+    pub fn status(&self) -> &str {
+        self.status.as_ref()
+    }
 }
 
 #[cfg(test)]
