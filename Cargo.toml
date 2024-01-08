@@ -13,7 +13,7 @@ authors = ["Eric Holk <eric@theincredibleholk.org>"]
 async-walkdir = "0.2.0"
 bumpalo = "3.14.0"
 chrono = { version = "0.4.31", features = ["serde"] }
-clap = { version = "4.4.11", features = ["derive"] }
+clap = { version = "4.4.13", features = ["derive"] }
 email-address-parser = "2.0.0"
 futures = "0.3.30"
 futures-concurrency = "7.4.3"
