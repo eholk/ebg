@@ -81,7 +81,7 @@ pub fn adjust_relative_links<'a>(
 }
 
 #[derive(Debug)]
-enum LinkDest {
+pub enum LinkDest {
     External(Url),
     Local(String),
     /// The link is an email address
@@ -92,7 +92,7 @@ enum LinkDest {
 }
 
 impl LinkDest {
-    fn parse(s: &str) -> Result<Self, LinkDestError> {
+    pub fn parse(s: &str) -> Result<Self, LinkDestError> {
         if let Ok(url) = Url::parse(s) {
             Ok(Self::External(url))
         } else if let Some(email) = EmailAddress::parse(s, None) {
@@ -102,25 +102,29 @@ impl LinkDest {
         }
     }
 
-    fn is_local(&self) -> bool {
+    pub fn is_external(&self) -> bool {
+        matches!(self, Self::External(_))
+    }
+
+    pub fn is_local(&self) -> bool {
         match self {
             Self::External(_) | Self::Email(_, _) => false,
             Self::Local(_) => true,
         }
     }
 
-    fn is_relative(&self) -> bool {
+    pub fn is_relative(&self) -> bool {
         match self {
             Self::External(_) | Self::Email(_, _) => false,
             Self::Local(s) => !s.starts_with('/'),
         }
     }
 
-    fn is_absolute(&self) -> bool {
+    pub fn is_absolute(&self) -> bool {
         !self.is_relative()
     }
 
-    fn fragment(&self) -> Option<&str> {
+    pub fn fragment(&self) -> Option<&str> {
         match self {
             Self::External(url) => url.fragment(),
             Self::Local(s) => s.rsplit_once('#').map(|(_, f)| f),
@@ -128,7 +132,7 @@ impl LinkDest {
         }
     }
 
-    fn path(&self) -> &str {
+    pub fn path(&self) -> &str {
         match self {
             Self::External(url) => url.path(),
             Self::Local(s) => {
@@ -180,7 +184,7 @@ impl std::fmt::Display for LinkDest {
 }
 
 #[derive(Diagnostic, Debug, Error)]
-enum LinkDestError {}
+pub enum LinkDestError {}
 
 #[cfg(test)]
 mod test {

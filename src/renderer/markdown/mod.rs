@@ -2,10 +2,12 @@
 //!
 //! These are implemented as iterators from markdown events to markdown events.
 
+use self::source_links::LinkDest;
+
 use super::RenderContext;
-use crate::index::PageSource;
+use crate::index::{PageSource, SiteMetadata, WaybackConfig};
 use bumpalo::Bump;
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag};
+use pulldown_cmark::{CowStr, Event, HeadingLevel, LinkType, Options, Parser, Tag};
 use slug::slugify;
 
 mod code;
@@ -41,12 +43,16 @@ pub(super) fn render_markdown(
     let mut anchors = HeadingAnchors::new();
     let parser = anchors.add_anchors(parser.into_iter());
 
+    let parser = collect_footnotes(parser);
+    let parser = rcx.code_formatter.format_codeblocks(parser);
+
+    let parser: Vec<_> = match &rcx.site.config().wayback {
+        Some(wayback) => add_wayback_links(wayback, parser.into_iter()).collect(),
+        None => parser.collect(),
+    };
+
     let mut markdown_buffer = String::with_capacity(contents.len() * 2);
-    pulldown_cmark::html::push_html(
-        &mut markdown_buffer,
-        rcx.code_formatter
-            .format_codeblocks(collect_footnotes(parser)),
-    );
+    pulldown_cmark::html::push_html(&mut markdown_buffer, parser.into_iter());
     (markdown_buffer, title)
 }
 
@@ -204,6 +210,53 @@ impl HeadingAnchors {
 
 fn heading_to_anchor(heading: &str) -> String {
     slugify(heading)
+}
+
+pub fn add_wayback_links<'a>(
+    config: &WaybackConfig,
+    events: impl Iterator<Item = Event<'a>>,
+) -> impl Iterator<Item = Event<'a>> {
+    let mut count = 0;
+    let mut footnotes = Vec::new();
+    let events: Vec<_> = events
+        .flat_map(|e| match e {
+            Event::End(Tag::Link(ref _ty, ref url, ref _title)) => {
+                let Ok(dest) = LinkDest::parse(url) else {
+                    return vec![e];
+                };
+
+                if dest.is_external() {
+                    let tag: CowStr<'_> = format!("wayback-{count}").into();
+
+                    // FIXME: derive the timestamp either from wayback.toml or the page's publish date
+                    let timestamp = "20240108";
+
+                    footnotes.push(Event::Start(Tag::FootnoteDefinition(tag.clone())));
+                    footnotes.push(Event::Text("Wayback: ".into()));
+                    footnotes.push(Event::Start(Tag::Link(
+                        LinkType::Autolink,
+                        format!("https://web.archive.org/web/{timestamp}/{url}",).into(),
+                        "".into(),
+                    )));
+                    footnotes.push(Event::Text(url.clone()));
+                    footnotes.push(Event::End(Tag::Link(
+                        LinkType::Autolink,
+                        format!("https://web.archive.org/web/{timestamp}/{url}",).into(),
+                        "".into(),
+                    )));
+                    footnotes.push(Event::End(Tag::FootnoteDefinition(tag.clone())));
+
+                    count += 1;
+                    vec![e, Event::FootnoteReference(tag.clone())]
+                } else {
+                    vec![e]
+                }
+            }
+            e => vec![e],
+        })
+        .collect();
+
+    events.into_iter().chain(footnotes.into_iter())
 }
 
 #[cfg(test)]
