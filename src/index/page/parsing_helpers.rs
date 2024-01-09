@@ -1,19 +1,25 @@
 use std::ops::Range;
 
-use chrono::{DateTime, Local, NaiveDateTime, ParseResult, Utc};
+use chrono::{DateTime, Local, NaiveDate, NaiveDateTime, ParseResult, Utc};
 use serde::{Deserialize, Deserializer};
 use tracing::trace;
 
 use super::Date;
 
-pub fn deserialize_date<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Date>, D::Error> {
-    let s = <Option<&str> as Deserialize>::deserialize(d)?;
+pub fn deserialize_date_opt<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Date>, D::Error> {
+    let s = <Option<String> as Deserialize>::deserialize(d)?;
+    let s = s.as_deref();
     // TODO: support optional timezone information
     let date = s
         .map(date_from_str)
         .transpose()
         .map_err(serde::de::Error::custom)?;
     Ok(date)
+}
+
+pub fn deserialize_date<'de, D: Deserializer<'de>>(d: D) -> Result<Date, D::Error> {
+    let date = deserialize_date_opt(d)?;
+    Ok(date.ok_or_else(|| serde::de::Error::custom("missing date"))?)
 }
 
 fn date_from_str(s: &str) -> ParseResult<Date> {
@@ -23,6 +29,10 @@ fn date_from_str(s: &str) -> ParseResult<Date> {
         .or_else(|_| {
             NaiveDateTime::parse_from_str(s, "%F %R")
                 .map(|date| date.and_local_timezone(Local).unwrap().with_timezone(&Utc))
+        })
+        .or_else(|_| {
+            NaiveDate::parse_from_str(s, "%F")
+                .map(|date| date.and_hms_opt(0, 0, 0).unwrap().and_utc())
         })
 }
 
@@ -103,6 +113,14 @@ mod test {
             .with_ymd_and_hms(2012, 11, 27, 19, 40, 0)
             .unwrap()
             .with_timezone(&Utc);
+        assert_eq!(date_from_str(date).into_diagnostic()?, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn parse_date_only() -> miette::Result<()> {
+        let date = "2012-11-27";
+        let expected = Utc.with_ymd_and_hms(2012, 11, 27, 0, 0, 0).unwrap();
         assert_eq!(date_from_str(date).into_diagnostic()?, expected);
         Ok(())
     }

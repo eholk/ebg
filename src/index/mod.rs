@@ -33,10 +33,27 @@ pub struct Config {
     #[serde(default)]
     pub macros: HashMap<String, PathBuf>,
     /// Options that are passed directly to to the theme
-    /// 
+    ///
     /// Within theme templates, these are available under the `theme` variable.
     #[serde(default)]
     pub theme_opts: serde_json::Value,
+
+    pub wayback: Option<WaybackConfig>,
+}
+
+#[derive(Deserialize, Default)]
+pub struct WaybackConfig {
+    snapshots: PathBuf,
+    exclude: Vec<WaybackFilter>,
+}
+
+#[derive(Deserialize, PartialEq, Debug)]
+pub enum WaybackFilter {
+    #[serde(rename = "before")]
+    Before(
+        #[serde(deserialize_with = "page::parsing_helpers::deserialize_date")]
+        chrono::DateTime<chrono::Utc>,
+    ),
 }
 
 #[derive(Diagnostic, Error, Debug)]
@@ -286,6 +303,13 @@ async fn load_directory(
 
 #[cfg(test)]
 mod test {
+    use std::path::Path;
+
+    use chrono::{DateTime, Utc};
+    use miette::IntoDiagnostic;
+
+    use crate::index::WaybackFilter;
+
     use super::Config;
 
     #[test]
@@ -297,5 +321,27 @@ mod test {
         let config: Config = toml::from_str(config).unwrap();
 
         assert_eq!(config.url, Some("https://example.com".to_string()));
+    }
+
+    #[test]
+    fn parse_wayback_config() -> miette::Result<()> {
+        let config = r#"
+        [wayback]
+        snapshots = "wayback.toml"
+        exclude = [{ before = "2024-01-01" }]
+"#;
+
+        let config: super::Config = toml::from_str(config).into_diagnostic()?;
+        let wayback = config.wayback.unwrap();
+
+        assert_eq!(wayback.snapshots.as_path(), Path::new("wayback.toml"));
+        assert_eq!(wayback.exclude.len(), 1);
+
+        let date = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+            .into_diagnostic()?
+            .with_timezone(&Utc);
+        assert_eq!(wayback.exclude[0], WaybackFilter::Before(date));
+
+        Ok(())
     }
 }

@@ -14,10 +14,10 @@ use tokio::fs::read_to_string;
 use tracing::debug;
 
 use self::parsing_helpers::{
-    deserialize_comma_separated_list, deserialize_date, find_frontmatter_delimiter,
+    deserialize_comma_separated_list, deserialize_date_opt, find_frontmatter_delimiter,
 };
 
-mod parsing_helpers;
+pub(crate) mod parsing_helpers;
 
 type Date = DateTime<Utc>;
 
@@ -27,7 +27,7 @@ pub struct FrontMatter {
     #[serde(default)]
     title: String,
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_date")]
+    #[serde(deserialize_with = "deserialize_date_opt")]
     date: Option<Date>,
     #[allow(unused)]
     comments: Option<bool>,
