@@ -2,9 +2,12 @@
 
 use std::{
     collections::HashMap,
+    fs::File,
+    io::Read,
     path::{Path, PathBuf},
 };
 
+use clap::error;
 use futures::StreamExt;
 use miette::{Diagnostic, Severity};
 use serde::Deserialize;
@@ -15,6 +18,8 @@ use tokio_stream::wrappers::ReadDirStream;
 mod page;
 
 pub use page::{PageKind, PageMetadata, PageSource, SourceFormat};
+
+use crate::wayback::{self, Snapshot};
 
 use self::page::PageLoadError;
 
@@ -149,6 +154,39 @@ impl SiteIndex {
     pub fn add_page(&mut self, page: PageSource) {
         self.pages.push(page);
     }
+
+    /// Loads the Wayback snapshot file
+    pub fn load_wayback_snapshot(&self) -> Result<Option<Snapshot>, WaybackError> {
+        let Some(WaybackConfig {
+            snapshots: ref src,
+            exclude: _,
+        }) = self.config().wayback
+        else {
+            return Ok(None);
+        };
+
+        let mut buf = <_>::default();
+        File::open(src)?.read_to_string(&mut buf)?;
+        let snapshot = toml::from_str(&buf)?;
+        Ok(Some(snapshot))
+    }
+}
+
+/// Errors that can occur while loading the Wayback snapshot file
+#[derive(Debug, Diagnostic, Error)]
+pub enum WaybackError {
+    #[error("reading snapshot file")]
+    FileRead(
+        #[source]
+        #[from]
+        std::io::Error,
+    ),
+    #[error("parsing snapshot file")]
+    ParseError(
+        #[source]
+        #[from]
+        toml::de::Error,
+    ),
 }
 
 /// Accessor methods for various kinds of site metadata
