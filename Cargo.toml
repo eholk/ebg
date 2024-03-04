@@ -22,7 +22,7 @@ indicatif = "0.17.7"
 miette = { version = "5.10.0", features = ["fancy"] }
 notify = "6.1.1"
 pathdiff = "0.2.1"
-pulldown-cmark = "0.9.3"
+pulldown-cmark = "0.10.0"
 quick-xml = "0.31.0"
 rayon = "1.9.0"
 serde = { version = "1.0.197", features = ["derive"] }
