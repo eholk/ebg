@@ -1,6 +1,6 @@
 //! Markdown filters for syntax highlighting and other code formatting.
 
-use pulldown_cmark::{CodeBlockKind, Event, Tag};
+use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
 use std::collections::HashMap;
 use syntect::{highlighting::ThemeSet, html::highlighted_html_for_string, parsing::SyntaxSet};
 
@@ -47,9 +47,7 @@ impl CodeFormatter {
                     lang.lang.unwrap_or("").to_owned().into(),
                 ))),
                 Event::Text(code.into()),
-                Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(
-                    lang.lang.unwrap_or("").to_owned().into(),
-                ))),
+                Event::End(TagEnd::CodeBlock),
             ],
         };
 
@@ -65,9 +63,7 @@ impl CodeFormatter {
                             .join("\n")
                             .into(),
                     ),
-                    Event::End(Tag::CodeBlock(CodeBlockKind::Fenced(
-                        lang.lang().to_owned().into(),
-                    ))),
+                    Event::End(TagEnd::CodeBlock),
                     Event::Html("</td><td>".into()),
                 ];
                 events.extend(body);
@@ -82,16 +78,18 @@ impl CodeFormatter {
         &'a self,
         parser: impl Iterator<Item = Event<'a>>,
     ) -> impl Iterator<Item = Event<'a>> {
-        let mut in_code = false;
+        let mut in_code = None;
         let mut code = String::new();
         parser
             .flat_map(|e| match e {
-                Event::Start(Tag::CodeBlock(_lang)) => {
-                    in_code = true;
+                Event::Start(Tag::CodeBlock(lang)) => {
+                    in_code = Some(lang);
                     vec![]
                 }
-                Event::End(Tag::CodeBlock(lang)) => {
-                    in_code = false;
+                Event::End(TagEnd::CodeBlock) => {
+                    let lang = in_code
+                        .take()
+                        .expect("found code block end without code block start");
                     let code = std::mem::take(&mut code);
                     match lang {
                         CodeBlockKind::Fenced(lang) => {
@@ -99,14 +97,14 @@ impl CodeFormatter {
                             self.highlight_code(code, lang)
                         }
                         CodeBlockKind::Indented => vec![
-                            Event::Start(Tag::CodeBlock(lang.clone())),
+                            Event::Start(Tag::CodeBlock(lang)),
                             Event::Text(code.into()),
-                            Event::End(Tag::CodeBlock(lang)),
+                            Event::End(TagEnd::CodeBlock),
                         ],
                     }
                 }
                 Event::Text(text) => {
-                    if in_code {
+                    if in_code.is_some() {
                         code += text.as_ref();
                         vec![]
                     } else {
@@ -129,12 +127,6 @@ impl Default for CodeFormatter {
 struct LangOptions<'a> {
     lang: Option<&'a str>,
     line_numbers: bool,
-}
-
-impl LangOptions<'_> {
-    fn lang(&self) -> &str {
-        self.lang.unwrap_or("")
-    }
 }
 
 fn parse_lang(s: &str) -> LangOptions<'_> {

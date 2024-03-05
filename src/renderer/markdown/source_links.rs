@@ -67,13 +67,21 @@ pub fn adjust_relative_links<'a>(
     markdown
         .into_iter()
         .map(move |event| match event {
-            Event::Start(Tag::Link(link_type, url, title)) => {
-                let url = map_url(&url).unwrap_or_else(|| url.to_string());
-                Event::Start(Tag::Link(link_type, url.into(), title))
-            }
-            Event::End(Tag::Link(link_type, url, title)) => {
-                let url = map_url(&url).unwrap_or_else(|| url.to_string());
-                Event::End(Tag::Link(link_type, url.into(), title))
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }) => {
+                let dest_url = map_url(&dest_url)
+                    .unwrap_or_else(|| dest_url.to_string())
+                    .into();
+                Event::Start(Tag::Link {
+                    link_type,
+                    dest_url,
+                    title,
+                    id,
+                })
             }
             event => event,
         })

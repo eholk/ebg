@@ -5,7 +5,7 @@
 use super::RenderContext;
 use crate::index::PageSource;
 use bumpalo::Bump;
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use slug::slugify;
 
 mod code;
@@ -77,11 +77,17 @@ pub fn extract_title_and_adjust_headers<'a>(
 
     for event in events {
         match (&event, &state) {
-            (Event::Start(Tag::Heading(HeadingLevel::H1, _fragment, _classes)), State::Init) => {
+            (
+                Event::Start(Tag::Heading {
+                    level: HeadingLevel::H1,
+                    ..
+                }),
+                State::Init,
+            ) => {
                 state = State::InTitle;
                 has_title = true;
             }
-            (Event::End(Tag::Heading(HeadingLevel::H1, _fragment, _classes)), State::InTitle) => {
+            (Event::End(TagEnd::Heading(HeadingLevel::H1)), State::InTitle) => {
                 state = State::PastTitle;
             }
             (_, State::Init) => {
@@ -93,21 +99,22 @@ pub fn extract_title_and_adjust_headers<'a>(
             }
 
             // Promote headings
-            (Event::Start(Tag::Heading(level, fragment, classes)), State::PastTitle)
-                if has_title =>
-            {
-                output.push(Event::Start(Tag::Heading(
-                    promote_heading(*level),
-                    *fragment,
-                    classes.clone(),
-                )))
-            }
-            (Event::End(Tag::Heading(level, fragment, classes)), State::PastTitle) if has_title => {
-                output.push(Event::End(Tag::Heading(
-                    promote_heading(*level),
-                    *fragment,
-                    classes.clone(),
-                )))
+            (
+                Event::Start(Tag::Heading {
+                    level,
+                    id: fragment,
+                    classes,
+                    attrs,
+                }),
+                State::PastTitle,
+            ) if has_title => output.push(Event::Start(Tag::Heading {
+                level: promote_heading(*level),
+                id: fragment.clone(),
+                classes: classes.clone(),
+                attrs: attrs.clone(),
+            })),
+            (Event::End(TagEnd::Heading(level)), State::PastTitle) if has_title => {
+                output.push(Event::End(TagEnd::Heading(promote_heading(*level))))
             }
 
             (_, State::InTitle) => {}
@@ -162,21 +169,20 @@ impl HeadingAnchors {
 
         for mut event in events {
             match &mut event {
-                Event::Start(Tag::Heading(_level, None, _classes)) => {
+                Event::Start(Tag::Heading { id: None, .. }) => {
                     heading_text = String::new();
                     header_start = Some(out_events.len());
                 }
                 Event::Text(text) if header_start.is_some() => heading_text += text,
-                Event::End(Tag::Heading(_level, end_fragment @ None, _classes))
-                    if header_start.is_some() =>
-                {
+                Event::End(TagEnd::Heading(_)) if header_start.is_some() => {
                     let fragment = self.make_anchor(std::mem::take(&mut heading_text));
 
-                    *end_fragment = Some(fragment);
-
                     match &mut out_events[header_start.unwrap()] {
-                        Event::Start(Tag::Heading(_level, start_fragment @ None, _classes)) => {
-                            *start_fragment = Some(fragment);
+                        Event::Start(Tag::Heading {
+                            id: start_fragment @ None,
+                            ..
+                        }) => {
+                            *start_fragment = Some(fragment.into());
                         }
                         event => panic!("{event:?} is not a start header tag"),
                     }
@@ -208,7 +214,7 @@ fn heading_to_anchor(heading: &str) -> String {
 
 #[cfg(test)]
 mod test {
-    use pulldown_cmark::{html::push_html, Event, HeadingLevel, Parser, Tag};
+    use pulldown_cmark::{html::push_html, Event, HeadingLevel, Parser, Tag, TagEnd};
 
     use super::{extract_title_and_adjust_headers, heading_to_anchor};
 
@@ -235,12 +241,22 @@ This is not
     #[test]
     fn promote_titles() {
         let events = [
-            Event::Start(Tag::Heading(HeadingLevel::H1, None, vec![])),
+            Event::Start(Tag::Heading {
+                level: HeadingLevel::H1,
+                id: None,
+                classes: vec![],
+                attrs: vec![],
+            }),
             Event::Text("This is the title".into()),
-            Event::End(Tag::Heading(HeadingLevel::H1, None, vec![])),
-            Event::Start(Tag::Heading(HeadingLevel::H2, None, vec![])),
+            Event::End(TagEnd::Heading(HeadingLevel::H1)),
+            Event::Start(Tag::Heading {
+                level: HeadingLevel::H2,
+                id: None,
+                classes: vec![],
+                attrs: vec![],
+            }),
             Event::Text("This is a section".into()),
-            Event::End(Tag::Heading(HeadingLevel::H2, None, vec![])),
+            Event::End(TagEnd::Heading(HeadingLevel::H2)),
         ];
 
         let (events, title) = extract_title_and_adjust_headers(events.into_iter());
@@ -248,9 +264,14 @@ This is not
         assert_eq!(
             events.collect::<Vec<_>>(),
             vec![
-                Event::Start(Tag::Heading(HeadingLevel::H1, None, vec![])),
+                Event::Start(Tag::Heading {
+                    level: HeadingLevel::H1,
+                    id: None,
+                    classes: vec![],
+                    attrs: vec![],
+                }),
                 Event::Text("This is a section".into()),
-                Event::End(Tag::Heading(HeadingLevel::H1, None, vec![])),
+                Event::End(TagEnd::Heading(HeadingLevel::H1)),
             ]
         );
         assert_eq!(title, Some("This is the title".to_string()));
