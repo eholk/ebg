@@ -10,6 +10,8 @@ use tracing::debug;
 #[derive(Parser)]
 pub struct NewPostOptions {
     title: String,
+    #[clap(long)]
+    open: bool,
 }
 
 impl super::Command for NewPostOptions {
@@ -52,6 +54,10 @@ published: false
             .as_bytes(),
         )
         .into_diagnostic()?;
+
+        if self.open {
+            open::that_detached(post_filename).into_diagnostic()?;
+        }
 
         Ok(())
     }
