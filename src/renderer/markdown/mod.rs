@@ -141,7 +141,7 @@ fn promote_heading(level: HeadingLevel) -> HeadingLevel {
 mod test {
     use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 
-    use super::{extract_title_and_adjust_headers};
+    use super::extract_title_and_adjust_headers;
 
     #[test]
     fn extract_title_heading() {
