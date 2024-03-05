@@ -1,6 +1,6 @@
 //! Markdown filters for adjusting the way footnotes show up.
 
-use pulldown_cmark::{Event, Tag};
+use pulldown_cmark::{CowStr, Event, Tag, TagEnd};
 use tracing::debug;
 
 /// Gathers all footnote definitions and pulls them to the end
@@ -10,7 +10,7 @@ pub fn collect_footnotes<'a>(
     CollectFootnotes::Parsing {
         parser,
         footnotes: vec![],
-        in_footnote: false,
+        in_footnote: None,
         count: 0,
     }
 }
@@ -19,7 +19,7 @@ enum CollectFootnotes<'a, I> {
     Parsing {
         parser: I,
         footnotes: Vec<Event<'a>>,
-        in_footnote: bool,
+        in_footnote: Option<CowStr<'a>>,
         /// How many footnotes we've encountered so far.
         count: usize,
     },
@@ -55,18 +55,22 @@ where
                                     return Some(Event::Html(html.into()));
                                 }
                                 Event::Start(Tag::FootnoteDefinition(tag)) => {
-                                    *in_footnote = true;
+                                    *in_footnote = Some(tag.clone());
                                     footnotes.push(Event::Start(Tag::FootnoteDefinition(tag)));
                                 }
-                                Event::End(Tag::FootnoteDefinition(tag)) => {
-                                    *in_footnote = false;
+                                Event::End(TagEnd::FootnoteDefinition) => {
+                                    let tag =
+                                        in_footnote.take().expect("end footnote without start");
                                     debug!("ending footnote, last event = {:?}", footnotes.last());
-                                    assert_eq!(footnotes.last(), Some(&Event::End(Tag::Paragraph)));
+                                    assert_eq!(
+                                        footnotes.last(),
+                                        Some(&Event::End(TagEnd::Paragraph))
+                                    );
                                     footnotes.insert(footnotes.len() - 1, Event::Html(format!(r##"<a href="#fnref:{tag}" class="footnote-backref">↩</a>"##).into()));
-                                    footnotes.push(Event::End(Tag::FootnoteDefinition(tag)));
+                                    footnotes.push(Event::End(TagEnd::FootnoteDefinition));
                                 }
                                 e => {
-                                    if *in_footnote {
+                                    if in_footnote.is_some() {
                                         footnotes.push(e)
                                     } else {
                                         return Some(e);
@@ -91,7 +95,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pulldown_cmark::{Options, Parser};
+    use pulldown_cmark::{Options, Parser, TagEnd};
 
     #[test]
     fn test_collect_footnotes() {
@@ -106,7 +110,7 @@ The footnote should come after this.
         let events = collect_footnotes(events);
         assert!(matches!(
             events.last(),
-            Some(Event::End(Tag::FootnoteDefinition(_)))
+            Some(Event::End(TagEnd::FootnoteDefinition))
         ));
     }
 }
