@@ -88,7 +88,8 @@ mod test {
     /// Makes sure we generate the right anchor for various headers
     #[test]
     fn anchors() {
-        assert_eq!(heading_to_anchor("Hello World"), "hello-world")
+        assert_eq!(heading_to_anchor("Hello World"), "hello-world");
+        assert_eq!(heading_to_anchor("#[no_std]"), "no-std");
     }
 
     #[test]
