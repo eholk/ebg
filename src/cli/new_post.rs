@@ -10,6 +10,7 @@ use tracing::debug;
 #[derive(Parser)]
 pub struct NewPostOptions {
     title: String,
+    /// Open the new post in the default editor
     #[clap(long)]
     open: bool,
 }
