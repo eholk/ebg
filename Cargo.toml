@@ -19,7 +19,7 @@ futures = "0.3.30"
 futures-concurrency = "7.5.0"
 hyper = { version = "0.14.28", features = ["http1", "server", "tcp"] }
 indicatif = "0.17.7"
-miette = { version = "6.0.1", features = ["fancy"] }
+miette = { version = "7.2.0", features = ["fancy"] }
 notify = "6.1.1"
 open = "5.1.2"
 pathdiff = "0.2.1"
