@@ -95,7 +95,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pulldown_cmark::{Options, Parser, TagEnd};
+    use pulldown_cmark::{Options, Parser};
 
     #[test]
     fn test_collect_footnotes() {

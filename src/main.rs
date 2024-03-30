@@ -1,5 +1,5 @@
 use clap::Parser;
-use cli::{about::AboutOptions, new_post::NewPostOptions};
+use cli::{about::AboutOptions, list::ListOptions, new_post::NewPostOptions};
 use serve::ServerOptions;
 
 use ebg::generator::Options;
@@ -19,10 +19,11 @@ struct Cli {
 
 #[derive(Parser)]
 enum Commands {
-    Build(Options),
-    Serve(ServerOptions),
-    NewPost(NewPostOptions),
     About(AboutOptions),
+    Build(Options),
+    List(ListOptions),
+    NewPost(NewPostOptions),
+    Serve(ServerOptions),
 }
 
 fn main() -> miette::Result<()> {
@@ -35,6 +36,7 @@ fn main() -> miette::Result<()> {
 
     match args.command {
         Commands::Build(args) => args.run()?,
+        Commands::List(args) => args.run()?,
         Commands::NewPost(options) => options.run()?,
         Commands::Serve(options) => options.run()?,
         Commands::About(cmd) => cmd.run()?,

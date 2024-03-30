@@ -1,11 +1,11 @@
 use std::{
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::Mutex,
     time::{Duration, Instant},
 };
 
 use ebg::{
-    generator::{self, GeneratorContext, Observer, Options},
+    generator::{self, GeneratorContext, Observer},
     index::{PageMetadata, SiteIndex, SiteMetadata},
 };
 use indicatif::{MultiProgress, ProgressBar};
@@ -83,7 +83,7 @@ impl Observer for BuildStatusViewer {
 
 impl super::Command for generator::Options {
     fn run(self) -> miette::Result<()> {
-        let path = find_site_root(&self).context("finding Site.toml")?;
+        let path = find_site_root(self.path.as_deref()).context("finding Site.toml")?;
         info!("building blog from {}", path.display());
 
         let start_time = Instant::now();
@@ -110,8 +110,8 @@ impl super::Command for generator::Options {
     }
 }
 
-pub(crate) fn find_site_root(options: &Options) -> miette::Result<PathBuf> {
-    let mut path = options.path.clone().unwrap_or(".".into());
+pub(crate) fn find_site_root(path: Option<&Path>) -> miette::Result<PathBuf> {
+    let mut path = path.unwrap_or(Path::new(".")).to_path_buf();
     loop {
         if path.join("Site.toml").exists() {
             return Ok(path.clone());

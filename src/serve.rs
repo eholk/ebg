@@ -78,7 +78,8 @@ pub(crate) async fn serve(options: ServerOptions) -> miette::Result<()> {
     })
     .into_diagnostic()?;
 
-    let path = std::fs::canonicalize(&find_site_root(&options.build_opts)?).into_diagnostic()?;
+    let path = std::fs::canonicalize(&find_site_root(options.build_opts.path.as_deref())?)
+        .into_diagnostic()?;
     watcher
         .watch(&path, RecursiveMode::Recursive)
         .into_diagnostic()?;
