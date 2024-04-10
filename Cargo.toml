@@ -18,7 +18,7 @@ email-address-parser = "2.0.0"
 futures = "0.3.30"
 futures-concurrency = "7.5.0"
 hyper = { version = "0.14.28", features = ["http1", "server", "tcp"] }
-indicatif = "0.17.7"
+indicatif = "0.17.8"
 miette = { version = "7.2.0", features = ["fancy"] }
 notify = "6.1.1"
 open = "5.1.2"
