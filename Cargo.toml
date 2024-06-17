@@ -10,7 +10,7 @@ authors = ["Eric Holk <eric@theincredibleholk.org>"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-async-walkdir = "1.0.0"
+async-walkdir = "2.0.0"
 bumpalo = "3.16.0"
 chrono = { version = "0.4.38", features = ["serde"] }
 clap = { version = "4.5.7", features = ["derive"] }
