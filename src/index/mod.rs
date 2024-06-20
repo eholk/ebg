@@ -33,7 +33,7 @@ pub struct Config {
     #[serde(default)]
     pub macros: HashMap<String, PathBuf>,
     /// Options that are passed directly to to the theme
-    /// 
+    ///
     /// Within theme templates, these are available under the `theme` variable.
     #[serde(default)]
     pub theme_opts: serde_json::Value,
@@ -43,6 +43,8 @@ pub struct Config {
 pub enum IndexError {
     #[error("reading directory entry")]
     ReadingDirectoryEntry(#[source] std::io::Error),
+    #[error("reading directory entry")]
+    WalkdirReadingDirectoryEntry(#[source] walkdir::Error),
     #[error("invalid post filename: `{}`", .0.display())]
     InvalidFilename(PathBuf),
     #[error("reading post contents")]
@@ -263,11 +265,11 @@ async fn load_directory(
         }
     }
 
-    let mut walk = async_walkdir::WalkDir::new(path);
-    while let Some(result) = walk.next().await {
-        let entry = result.map_err(IndexError::ReadingDirectoryEntry)?;
+    let walk = walkdir::WalkDir::new(path);
+    for result in walk {
+        let entry = result.map_err(IndexError::WalkdirReadingDirectoryEntry)?;
 
-        if !entry.file_type().await.unwrap().is_file() {
+        if !entry.file_type().is_file() {
             continue;
         }
 
@@ -277,7 +279,7 @@ async fn load_directory(
                 pages.push(page)
             }
         } else {
-            raw_files.push(filename)
+            raw_files.push(filename.to_path_buf())
         }
     }
 
