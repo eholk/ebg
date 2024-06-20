@@ -39,6 +39,7 @@ pub struct Config {
     pub theme_opts: serde_json::Value,
 }
 
+#[non_exhaustive]
 #[derive(Diagnostic, Error, Debug)]
 pub enum IndexError {
     #[error("reading directory entry")]
