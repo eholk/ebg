@@ -19,9 +19,9 @@ jobs:
     - name: Update Rust
       run: rustup update
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --locked
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose --locked
     - name: Check semver
       uses: obi1kenobi/cargo-semver-checks-action@v2
       with:

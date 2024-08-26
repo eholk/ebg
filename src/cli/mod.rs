@@ -2,6 +2,7 @@
 
 pub mod about;
 pub mod build;
+pub mod list;
 pub mod new_post;
 
 /// Describes a command that can be run from the command line.

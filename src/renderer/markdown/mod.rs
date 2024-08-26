@@ -2,22 +2,20 @@
 //!
 //! These are implemented as iterators from markdown events to markdown events.
 
-use std::path::PathBuf;
+use self::anchors::HeadingAnchors;
 
-use bumpalo::Bump;
-use pulldown_cmark::{CowStr, Event, HeadingLevel, Options, Parser, Tag};
+use super::RenderContext;
+use crate::index::PageSource;
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
+mod anchors;
 mod code;
 mod footnotes;
+mod source_links;
 
 pub use code::CodeFormatter;
 pub use footnotes::collect_footnotes;
-use slug::slugify;
-use tracing::debug;
-
-use crate::index::{PageMetadata, PageSource, SiteMetadata};
-
-use super::RenderContext;
+pub use source_links::adjust_relative_links;
 
 /// Renders a page's markdown contents
 ///
@@ -39,10 +37,10 @@ pub(super) fn render_markdown(
 
     let (parser, title) = extract_title_and_adjust_headers(parser);
 
-    let parser = adjust_relative_links(parser, source, rcx);
+    let parser = adjust_relative_links(parser.collect(), source, rcx);
 
     let mut anchors = HeadingAnchors::new();
-    let parser = anchors.add_anchors(parser);
+    let parser = anchors.add_anchors(parser.into_iter());
 
     let mut markdown_buffer = String::with_capacity(contents.len() * 2);
     pulldown_cmark::html::push_html(
@@ -80,11 +78,17 @@ pub fn extract_title_and_adjust_headers<'a>(
 
     for event in events {
         match (&event, &state) {
-            (Event::Start(Tag::Heading(HeadingLevel::H1, _fragment, _classes)), State::Init) => {
+            (
+                Event::Start(Tag::Heading {
+                    level: HeadingLevel::H1,
+                    ..
+                }),
+                State::Init,
+            ) => {
                 state = State::InTitle;
                 has_title = true;
             }
-            (Event::End(Tag::Heading(HeadingLevel::H1, _fragment, _classes)), State::InTitle) => {
+            (Event::End(TagEnd::Heading(HeadingLevel::H1)), State::InTitle) => {
                 state = State::PastTitle;
             }
             (_, State::Init) => {
@@ -96,21 +100,22 @@ pub fn extract_title_and_adjust_headers<'a>(
             }
 
             // Promote headings
-            (Event::Start(Tag::Heading(level, fragment, classes)), State::PastTitle)
-                if has_title =>
-            {
-                output.push(Event::Start(Tag::Heading(
-                    promote_heading(*level),
-                    *fragment,
-                    classes.clone(),
-                )))
-            }
-            (Event::End(Tag::Heading(level, fragment, classes)), State::PastTitle) if has_title => {
-                output.push(Event::End(Tag::Heading(
-                    promote_heading(*level),
-                    *fragment,
-                    classes.clone(),
-                )))
+            (
+                Event::Start(Tag::Heading {
+                    level,
+                    id: fragment,
+                    classes,
+                    attrs,
+                }),
+                State::PastTitle,
+            ) if has_title => output.push(Event::Start(Tag::Heading {
+                level: promote_heading(*level),
+                id: fragment.clone(),
+                classes: classes.clone(),
+                attrs: attrs.clone(),
+            })),
+            (Event::End(TagEnd::Heading(level)), State::PastTitle) if has_title => {
+                output.push(Event::End(TagEnd::Heading(promote_heading(*level))))
             }
 
             (_, State::InTitle) => {}
@@ -132,141 +137,11 @@ fn promote_heading(level: HeadingLevel) -> HeadingLevel {
     }
 }
 
-pub struct HeadingAnchors {
-    anchors: Bump,
-}
-
-impl HeadingAnchors {
-    pub fn new() -> Self {
-        Self {
-            anchors: <_>::default(),
-        }
-    }
-
-    pub gen fn add_anchors<'a, 'b>(
-        &'a mut self,
-        events: impl Iterator<Item = Event<'b>>,
-    ) -> Event<'a>
-    where
-        'b: 'a,
-    {
-        let mut heading_text = String::new();
-        let mut event_buffer = Vec::new();
-        let mut in_heading = false;
-
-        for mut event in events {
-            match &mut event {
-                Event::Start(Tag::Heading(_level, None, _classes)) => {
-                    in_heading = true;
-                    assert!(heading_text.is_empty());
-                    assert!(event_buffer.is_empty());
-                }
-                Event::Text(text) if in_heading => heading_text += text,
-                Event::End(Tag::Heading(_level, end_fragment @ None, _classes))
-                    if in_heading =>
-                {
-                    let fragment = self.make_anchor(std::mem::take(&mut heading_text));
-
-                    *end_fragment = Some(fragment);
-
-                    match &mut event_buffer[0] {
-                        Event::Start(Tag::Heading(_level, start_fragment @ None, _classes)) => {
-                            *start_fragment = Some(fragment);
-                        }
-                        event => panic!("{event:?} is not a start header tag"),
-                    }
-
-                    in_heading = false;
-
-                    // We have to use std::mem::take because otherwise we'd
-                    // be borrowing across a yield.
-                    //
-                    // Ideally we'd use drain(..), but that isn't possible
-                    // due to the borrowing.
-                    for event in std::mem::take(&mut event_buffer).into_iter() {
-                        yield event;
-                    }
-
-                    yield Event::Html(
-                        format!("<a class=\"header-anchor\" href=\"#{fragment}\">🔗</a>")
-                            .into(),
-                    );
-                }
-
-                _ => (),
-            }
-
-            if in_heading {
-                event_buffer.push(event.clone());
-            } else {
-                yield event
-            }
-        }
-    }
-
-    fn make_anchor(&self, text: impl AsRef<str>) -> &str {
-        self.anchors.alloc_str(&heading_to_anchor(text.as_ref()))
-    }
-}
-
-fn heading_to_anchor(heading: &str) -> String {
-    slugify(heading)
-}
-
-/// Finds links to source files and replaces them with links to the generated page
-pub fn adjust_relative_links<'a>(
-    markdown: impl Iterator<Item = Event<'a>>,
-    page: &'a PageSource,
-    rcx: &'a RenderContext<'_>,
-) -> impl Iterator<Item = Event<'a>> {
-    let map_url = |url: &CowStr<'_>| {
-        let url = url.to_string();
-        let (base, anchor) = match url.split_once('#') {
-            Some((base, anchor)) => (base, Some(anchor)),
-            None => (url.as_str(), None),
-        };
-        let path = PathBuf::from(&base);
-        if path.is_relative() {
-            debug!("found relative link to {}", path.display());
-            let path = page.source_path().parent()?.join(path);
-            debug!("mapped path to {}", path.display());
-            let page = rcx.site.find_page_by_source_path(&path)?;
-            let url = format!(
-                "{}/{}{}",
-                rcx.site.base_url(),
-                page.url(),
-                anchor.map(|a| format!("#{}", a)).unwrap_or_default()
-            );
-            debug!("linking to {url}");
-            Some(url)
-        } else {
-            None
-        }
-    };
-
-    markdown.map(move |event| match event {
-        Event::Start(Tag::Link(link_type, url, title)) => {
-            let url = map_url(&url).unwrap_or_else(|| url.to_string());
-            Event::Start(Tag::Link(link_type, url.into(), title))
-        }
-        Event::End(Tag::Link(link_type, url, title)) => {
-            let url = map_url(&url).unwrap_or_else(|| url.to_string());
-            Event::End(Tag::Link(link_type, url.into(), title))
-        }
-        event => event,
-    })
-}
-
 #[cfg(test)]
 mod test {
-    use pulldown_cmark::{html::push_html, Event, HeadingLevel, Parser, Tag};
+    use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
 
-    use super::{extract_title_and_adjust_headers, heading_to_anchor};
-
-    #[test]
-    fn anchors() {
-        assert_eq!(heading_to_anchor("Hello World"), "hello-world")
-    }
+    use super::extract_title_and_adjust_headers;
 
     #[test]
     fn extract_title_heading() {
@@ -286,12 +161,22 @@ This is not
     #[test]
     fn promote_titles() {
         let events = [
-            Event::Start(Tag::Heading(HeadingLevel::H1, None, vec![])),
+            Event::Start(Tag::Heading {
+                level: HeadingLevel::H1,
+                id: None,
+                classes: vec![],
+                attrs: vec![],
+            }),
             Event::Text("This is the title".into()),
-            Event::End(Tag::Heading(HeadingLevel::H1, None, vec![])),
-            Event::Start(Tag::Heading(HeadingLevel::H2, None, vec![])),
+            Event::End(TagEnd::Heading(HeadingLevel::H1)),
+            Event::Start(Tag::Heading {
+                level: HeadingLevel::H2,
+                id: None,
+                classes: vec![],
+                attrs: vec![],
+            }),
             Event::Text("This is a section".into()),
-            Event::End(Tag::Heading(HeadingLevel::H2, None, vec![])),
+            Event::End(TagEnd::Heading(HeadingLevel::H2)),
         ];
 
         let (events, title) = extract_title_and_adjust_headers(events.into_iter());
@@ -299,31 +184,16 @@ This is not
         assert_eq!(
             events.collect::<Vec<_>>(),
             vec![
-                Event::Start(Tag::Heading(HeadingLevel::H1, None, vec![])),
+                Event::Start(Tag::Heading {
+                    level: HeadingLevel::H1,
+                    id: None,
+                    classes: vec![],
+                    attrs: vec![],
+                }),
                 Event::Text("This is a section".into()),
-                Event::End(Tag::Heading(HeadingLevel::H1, None, vec![])),
+                Event::End(TagEnd::Heading(HeadingLevel::H1)),
             ]
         );
         assert_eq!(title, Some("This is the title".to_string()));
-    }
-
-    #[test]
-    fn add_anchors() {
-        let mut anchors = super::HeadingAnchors::new();
-        let events = Parser::new(
-            "# This is the title
-
-this is not the title
-
-## This is a section
-",
-        );
-        let events = anchors.add_anchors(events);
-
-        let mut html = String::new();
-        push_html(&mut html, events);
-
-        assert!(html.contains("<a class=\"header-anchor\" href=\"#this-is-the-title\">🔗</a>"));
-        assert!(html.contains("<a class=\"header-anchor\" href=\"#this-is-a-section\">🔗</a>"));
     }
 }

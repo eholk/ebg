@@ -6,11 +6,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use chrono::{DateTime, Datelike, Local, NaiveDateTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Local, TimeZone, Utc};
 use miette::Diagnostic;
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::fs::read_to_string;
+use tracing::debug;
 
 use self::parsing_helpers::{
     deserialize_comma_separated_list, deserialize_date, find_frontmatter_delimiter,
@@ -115,6 +116,7 @@ impl PageSource {
         contents: impl ToString,
     ) -> Self {
         let source = source.into();
+        debug!("creating page with source path `{}`", source.display());
         let contents = contents.to_string();
         // FIXME: we need to determine the kind more precisely, since we might be loading from a
         // directory other than _posts
@@ -299,11 +301,7 @@ fn parse_filename(path: &Path) -> Result<(Date, SourceFormat, &str), ParseFilena
         Some((date, rest)) => Ok((date, kind, rest)),
         None => Ok((
             // FIXME: We should return an option rather than fabricating a date
-            NaiveDateTime::from_timestamp_millis(0)
-                .unwrap()
-                .and_local_timezone(Utc)
-                .single()
-                .unwrap(),
+            DateTime::from_timestamp_millis(0).unwrap(),
             kind,
             filename,
         )),
@@ -337,7 +335,7 @@ mod test {
     use crate::index::{page::PageMetadata, SourceFormat};
 
     use super::{parse_filename, FrontMatter, PageSource};
-    use chrono::{Local, NaiveDateTime, TimeZone, Utc};
+    use chrono::{DateTime, Local, TimeZone, Utc};
     use miette::IntoDiagnostic;
     use std::path::Path;
 
@@ -346,10 +344,7 @@ mod test {
         assert_eq!(
             parse_filename(Path::new("about.md")),
             Ok((
-                NaiveDateTime::from_timestamp_millis(0)
-                    .unwrap()
-                    .and_local_timezone(Utc)
-                    .unwrap(),
+                DateTime::from_timestamp_millis(0).unwrap(),
                 SourceFormat::Markdown,
                 "about"
             ))

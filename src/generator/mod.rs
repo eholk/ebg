@@ -9,7 +9,7 @@ use serde_json::{json, Map, Value};
 use std::fs;
 use tera::Tera;
 use thiserror::Error;
-use tracing::debug;
+use tracing::{debug, warn};
 
 use crate::{
     index::{PageMetadata, SiteMetadata},
@@ -102,6 +102,13 @@ impl<'a> GeneratorContext<'a> {
                 old.path().display()
             );
             fs::rename(&self.options.destination, &old.path().join("publish"))
+                .or_else(|e| {
+                    warn!(
+                        "failed to move old destination directory, falling back on regular removal: {}",
+                        e);
+                    // If the rename fails, try to remove the destination directory
+                    fs::remove_dir_all(&self.options.destination)
+                })
                 .map_err(|e| GeneratorError::CleanDestDir(self.options.destination.clone(), e))?;
             Some(tokio::spawn(async move {
                 drop(old);
@@ -185,6 +192,7 @@ impl<'a> GeneratorContext<'a> {
                 let mut context = tera::Context::new();
                 context.insert("site", &site.value());
                 context.insert("page", &page.value());
+                context.insert("theme", &site.config().theme_opts);
 
                 let content_template = site
                     .config()
@@ -240,9 +248,15 @@ impl ToValue for RenderedPageRef<'_> {
 
 impl ToValue for RenderedSite<'_> {
     fn value(&self) -> Value {
-        let mut site = [("url".to_string(), json!(self.base_url()))]
-            .into_iter()
-            .collect::<Map<_, _>>();
+        // Add metadata from Site.toml
+        let mut site = [
+            ("url".to_string(), json!(self.base_url())),
+            ("title".to_string(), json!(self.title())),
+            ("author".to_string(), json!(self.author())),
+            ("author_email".to_string(), json!(self.author_email())),
+        ]
+        .into_iter()
+        .collect::<Map<_, _>>();
 
         let mut posts = self.posts().collect::<Vec<_>>();
         posts.sort_by_key(|b| std::cmp::Reverse(b.publish_date()));
@@ -261,8 +275,9 @@ impl ToValue for RenderedSite<'_> {
 #[cfg(test)]
 mod test {
     use crate::{
+        diagnostics::DiagnosticContext,
         index::{PageSource, SiteIndex, SourceFormat},
-        renderer::{CodeFormatter, RenderContext, RenderSource, RenderedPageRef},
+        renderer::{CodeFormatter, RenderContext, RenderError, RenderSource, RenderedPageRef},
     };
 
     use super::ToValue;
@@ -284,10 +299,12 @@ this is *also an excerpt*",
 
         let site = SiteIndex::default();
         let fmt = CodeFormatter::new();
-        let rcx = RenderContext::new(&site, &fmt);
-        let rendered_page = page.render(&rcx)?;
-        let page = RenderedPageRef::new(&page, &rendered_page);
-        let page = page.value();
+        let page = DiagnosticContext::with(|dcx| {
+            let rcx = RenderContext::new(&site, &fmt, dcx);
+            let rendered_page = page.render(&rcx)?;
+            let page = RenderedPageRef::new(&page, &rendered_page);
+            Ok::<_, RenderError>(page.value())
+        })?;
 
         assert_eq!(
             page["excerpt"],

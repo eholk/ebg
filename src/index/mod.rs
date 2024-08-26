@@ -24,6 +24,7 @@ pub struct Config {
     pub title: String,
     pub url: Option<String>,
     pub author: Option<String>,
+    pub author_email: Option<String>,
     pub subtitle: Option<String>,
     pub posts: Option<PathBuf>,
     pub theme: Option<PathBuf>,
@@ -31,12 +32,20 @@ pub struct Config {
     pub content: Vec<PathBuf>,
     #[serde(default)]
     pub macros: HashMap<String, PathBuf>,
+    /// Options that are passed directly to to the theme
+    ///
+    /// Within theme templates, these are available under the `theme` variable.
+    #[serde(default)]
+    pub theme_opts: serde_json::Value,
 }
 
+#[non_exhaustive]
 #[derive(Diagnostic, Error, Debug)]
 pub enum IndexError {
     #[error("reading directory entry")]
     ReadingDirectoryEntry(#[source] std::io::Error),
+    #[error("reading directory entry")]
+    WalkdirReadingDirectoryEntry(#[source] walkdir::Error),
     #[error("invalid post filename: `{}`", .0.display())]
     InvalidFilename(PathBuf),
     #[error("reading post contents")]
@@ -135,6 +144,7 @@ pub trait SiteMetadata {
     fn title(&self) -> &str;
     fn subtitle(&self) -> Option<&str>;
     fn author(&self) -> Option<&str>;
+    fn author_email(&self) -> Option<&str>;
     fn root_dir(&self) -> &PathBuf;
     fn num_pages(&self) -> usize;
     fn raw_files(&self) -> impl Iterator<Item = &Path>
@@ -160,6 +170,10 @@ impl SiteMetadata for SiteIndex {
 
     fn author(&self) -> Option<&str> {
         self.config.author.as_deref()
+    }
+
+    fn author_email(&self) -> Option<&str> {
+        self.config.author_email.as_deref()
     }
 
     fn config(&self) -> &Config {
@@ -252,11 +266,11 @@ async fn load_directory(
         }
     }
 
-    let mut walk = async_walkdir::WalkDir::new(path);
-    while let Some(result) = walk.next().await {
-        let entry = result.map_err(IndexError::ReadingDirectoryEntry)?;
+    let walk = walkdir::WalkDir::new(path);
+    for result in walk {
+        let entry = result.map_err(IndexError::WalkdirReadingDirectoryEntry)?;
 
-        if !entry.file_type().await.unwrap().is_file() {
+        if !entry.file_type().is_file() {
             continue;
         }
 
@@ -266,7 +280,7 @@ async fn load_directory(
                 pages.push(page)
             }
         } else {
-            raw_files.push(filename)
+            raw_files.push(filename.to_path_buf())
         }
     }
 
