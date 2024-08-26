@@ -308,7 +308,7 @@ this is *also an excerpt*",
 
         assert_eq!(
             page["excerpt"],
-            "<p>this is <em>an excerpt</em></p>\n<p>this is <em>also an excerpt</em></p>\n<hr />\n"
+            "<p>this is <em>an excerpt</em></p>\n<p>this is <em>also an excerpt</em></p>\n"
         );
 
         Ok(())

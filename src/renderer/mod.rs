@@ -331,7 +331,7 @@ categories:
 
         assert_eq!(
             rendered_page.rendered_contents(),
-            "<p><a href=\"/blog/2012/10/14/hello/\">hello</a></p>\n<hr />\n"
+            "<p><a href=\"/blog/2012/10/14/hello/\">hello</a></p>\n"
         );
 
         Ok(())
@@ -360,7 +360,7 @@ categories:
             RenderContext::run_dcx(&site, &code_formatter, |rcx| render_page.render(&rcx))?;
         assert_eq!(
             rendered_page.rendered_contents(),
-            "<p><a href=\"/blog/2012/10/14/hello/#title\">hello</a></p>\n<hr />\n"
+            "<p><a href=\"/blog/2012/10/14/hello/#title\">hello</a></p>\n"
         );
 
         Ok(())

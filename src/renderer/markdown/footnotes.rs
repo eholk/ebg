@@ -1,93 +1,65 @@
 //! Markdown filters for adjusting the way footnotes show up.
 
-use pulldown_cmark::{CowStr, Event, Tag, TagEnd};
-use tracing::debug;
+use pulldown_cmark::{Event, Tag, TagEnd};
 
 /// Gathers all footnote definitions and pulls them to the end
-pub fn collect_footnotes<'a>(
-    parser: impl Iterator<Item = Event<'a>>,
-) -> impl Iterator<Item = Event<'a>> {
-    CollectFootnotes::Parsing {
-        parser,
-        footnotes: vec![],
-        in_footnote: None,
-        count: 0,
+pub gen fn collect_footnotes<'a>(mut parser: impl Iterator<Item = Event<'a>>) -> Event<'a> {
+    let mut count = 0;
+    let mut footnotes = vec![];
+
+    // can't use a for loop here because it would lead to a borrow across yield
+    while let Some(e) = parser.next() {
+        match e {
+            Event::FootnoteReference(tag) => {
+                count += 1;
+                // Manually render footnote here so we can add a backlink id
+                let html = format!(
+                    r##"<sup class="footnote-reference"><a href="#{tag}" id="fnref:{tag}">{count}</a></sup>"##,
+                );
+                yield Event::Html(html.into());
+            }
+            Event::Start(Tag::FootnoteDefinition(tag)) => {
+                footnotes.push(Event::Start(Tag::FootnoteDefinition(tag.clone())));
+                collect_footnote_def(&mut parser, &tag, &mut footnotes);
+            }
+            e => {
+                yield e;
+            }
+        }
+    }
+
+    if !footnotes.is_empty() {
+        yield Event::Rule;
+    }
+
+    for e in footnotes {
+        yield e;
     }
 }
 
-enum CollectFootnotes<'a, I> {
-    Parsing {
-        parser: I,
-        footnotes: Vec<Event<'a>>,
-        in_footnote: Option<CowStr<'a>>,
-        /// How many footnotes we've encountered so far.
-        count: usize,
-    },
-    Finishing {
-        footnotes: std::vec::IntoIter<Event<'a>>,
-    },
-}
-
-impl<'a, I> Iterator for CollectFootnotes<'a, I>
-where
-    I: Iterator<Item = Event<'a>>,
-{
-    type Item = I::Item;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            match self {
-                CollectFootnotes::Parsing {
-                    parser,
-                    footnotes,
-                    in_footnote,
-                    count,
-                } => {
-                    match parser.next() {
-                        Some(e) => {
-                            match e {
-                                Event::FootnoteReference(tag) => {
-                                    // Manually render footnote here so we can add a backlink id
-                                    *count += 1;
-                                    let html = format!(
-                                        r##"<sup class="footnote-reference"><a href="#{tag}" id="fnref:{tag}">{count}</a></sup>"##,
-                                    );
-                                    return Some(Event::Html(html.into()));
-                                }
-                                Event::Start(Tag::FootnoteDefinition(tag)) => {
-                                    *in_footnote = Some(tag.clone());
-                                    footnotes.push(Event::Start(Tag::FootnoteDefinition(tag)));
-                                }
-                                Event::End(TagEnd::FootnoteDefinition) => {
-                                    let tag =
-                                        in_footnote.take().expect("end footnote without start");
-                                    debug!("ending footnote, last event = {:?}", footnotes.last());
-                                    assert_eq!(
-                                        footnotes.last(),
-                                        Some(&Event::End(TagEnd::Paragraph))
-                                    );
-                                    footnotes.insert(footnotes.len() - 1, Event::Html(format!(r##"<a href="#fnref:{tag}" class="footnote-backref">↩</a>"##).into()));
-                                    footnotes.push(Event::End(TagEnd::FootnoteDefinition));
-                                }
-                                e => {
-                                    if in_footnote.is_some() {
-                                        footnotes.push(e)
-                                    } else {
-                                        return Some(e);
-                                    }
-                                }
-                            }
-                        }
-                        None => {
-                            *self = Self::Finishing {
-                                footnotes: std::mem::take(footnotes).into_iter(),
-                            };
-                            return Some(Event::Rule);
-                        }
-                    }
-                }
-                CollectFootnotes::Finishing { footnotes } => return footnotes.next(),
+fn collect_footnote_def<'a>(
+    parser: impl Iterator<Item = Event<'a>>,
+    tag: &str,
+    footnotes: &mut Vec<Event<'a>>,
+) {
+    for e in parser {
+        match e {
+            Event::End(TagEnd::FootnoteDefinition) => {
+                assert_eq!(footnotes.last(), Some(&Event::End(TagEnd::Paragraph)));
+                footnotes.insert(
+                    footnotes.len() - 1,
+                    Event::Html(
+                        format!(r##"<a href="#fnref:{tag}" class="footnote-backref">↩</a>"##)
+                            .into(),
+                    ),
+                );
+                footnotes.push(e);
+                return;
             }
+            Event::Start(Tag::FootnoteDefinition(_)) => {
+                panic!("nested footnotes not supported");
+            }
+            e => footnotes.push(e),
         }
     }
 }
