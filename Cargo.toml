@@ -22,7 +22,7 @@ miette = { version = "7", features = ["fancy"] }
 notify = "6"
 open = "5"
 pathdiff = "0.2"
-pulldown-cmark = "0.11"
+pulldown-cmark = "0.12"
 quick-xml = "0.36"
 rayon = "1"
 serde = { version = "1", features = ["derive"] }
