@@ -22,6 +22,12 @@ pub enum AtomError {
         #[from]
         quick_xml::Error,
     ),
+    #[error("writing xml")]
+    IoError(
+        #[source]
+        #[from]
+        std::io::Error,
+    ),
 }
 
 pub(crate) fn generate_atom(
@@ -35,7 +41,7 @@ pub(crate) fn generate_atom(
     writer
         .create_element("feed")
         .with_attribute(("xmlns", "http://www.w3.org/2005/Atom"))
-        .write_inner_content(|writer| -> Result<(), AtomError> {
+        .write_inner_content(|writer: &mut Writer<_>| -> Result<(), _> {
             let atom_url = format!("{}/atom.xml", site.base_url());
 
             writer
@@ -77,7 +83,7 @@ pub(crate) fn generate_atom(
 
             if let Some(author) = site.author() {
                 writer.create_element("author").write_inner_content(
-                    |writer| -> Result<(), AtomError> {
+                    |writer: &mut Writer<_>| -> Result<(), _> {
                         writer
                             .create_element("name")
                             .write_text_content(BytesText::new(author))?;
@@ -92,7 +98,7 @@ pub(crate) fn generate_atom(
             for post in posts.into_iter().take(10) {
                 let post_url = format!("{}/{}", site.base_url(), post.url());
                 writer.create_element("entry").write_inner_content(
-                    |writer| -> Result<(), AtomError> {
+                    |writer: &mut Writer<_>| -> Result<(), _> {
                         writer
                             .create_element("title")
                             .with_attribute(("type", "html"))
@@ -128,7 +134,7 @@ pub(crate) fn generate_atom(
 
                         if let Some(author) = site.author() {
                             writer.create_element("author").write_inner_content(
-                                |writer| -> Result<(), AtomError> {
+                                |writer: &mut Writer<_>| -> Result<(), _> {
                                     writer
                                         .create_element("name")
                                         .write_text_content(BytesText::new(author))?;
