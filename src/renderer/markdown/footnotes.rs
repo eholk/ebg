@@ -7,7 +7,7 @@ pub gen fn collect_footnotes<'a>(mut parser: impl Iterator<Item = Event<'a>>) ->
     let mut count = 0;
     let mut footnotes = vec![];
 
-    // can't use a for loop here because it would lead to a borrow across yield
+    // can't use a for loop because we pass `&mut parser` to `collect_footnote_def`
     while let Some(e) = parser.next() {
         match e {
             Event::FootnoteReference(tag) => {
