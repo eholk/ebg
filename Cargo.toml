@@ -32,7 +32,7 @@ slug = "0.1"
 syntect = "5"
 tempfile = "3"
 tera = "1"
-thiserror = "1"
+thiserror = "2"
 tokio = { version = "1", features = [
     "fs",
     "io-util",
