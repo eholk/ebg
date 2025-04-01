@@ -19,7 +19,7 @@ futures-concurrency = "7"
 hyper = { version = "0.14", features = ["http1", "server", "tcp"] }
 indicatif = "0.17"
 miette = { version = "7", features = ["fancy"] }
-notify = "6"
+notify = "8"
 open = "5"
 pathdiff = "0.2"
 pulldown-cmark = "0.13"
