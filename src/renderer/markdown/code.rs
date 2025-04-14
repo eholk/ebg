@@ -1,7 +1,7 @@
 //! Markdown filters for syntax highlighting and other code formatting.
 
 use pulldown_cmark::{CodeBlockKind, Event, Tag, TagEnd};
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::iter};
 use syntect::{highlighting::ThemeSet, html::highlighted_html_for_string, parsing::SyntaxSet};
 
 pub struct CodeFormatter {
@@ -21,63 +21,65 @@ impl CodeFormatter {
         }
     }
 
-    gen fn highlight_code(&self, code: String, lang: LangOptions<'_>) -> Event<'_> {
-        let lines: Option<usize> = lang.line_numbers.then(|| code.lines().map(|_| 1).sum());
+    fn highlight_code(&self, code: String, lang: LangOptions<'_>) -> impl Iterator<Item = Event<'_>> {
+        iter!(move || {
+            let lines: Option<usize> = lang.line_numbers.then(|| code.lines().map(|_| 1).sum());
 
-        let syntax = lang.lang.and_then(|lang| {
-            let extension = self.language_map.get(lang).unwrap_or(&lang);
-            self.syntax_set.find_syntax_by_extension(extension)
-        });
+            let syntax = lang.lang.and_then(|lang| {
+                let extension = self.language_map.get(lang).unwrap_or(&lang);
+                self.syntax_set.find_syntax_by_extension(extension)
+            });
 
-        let lang = lang.lang.map(|s| s.to_string());
-        let body = gen move {
-            match syntax {
-                Some(ss) => {
-                    yield Event::Html(
-                        highlighted_html_for_string(
-                            &code,
-                            &self.syntax_set,
-                            ss,
-                            &self.theme_set.themes["InspiredGitHub"],
-                        )
-                        .unwrap()
-                        .into(),
+            let lang = lang.lang.map(|s| s.to_string());
+            let body = iter!(move || {
+                match syntax {
+                    Some(ss) => {
+                        yield Event::Html(
+                            highlighted_html_for_string(
+                                &code,
+                                &self.syntax_set,
+                                ss,
+                                &self.theme_set.themes["InspiredGitHub"],
+                            )
+                            .unwrap()
+                            .into(),
+                        );
+                    }
+                    None => {
+                        yield Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(
+                            lang.clone().unwrap_or_default().into(),
+                        )));
+                        yield Event::Text(code.into());
+                        yield Event::End(TagEnd::CodeBlock);
+                    }
+                }
+            })();
+
+            match lines {
+                Some(count) => {
+                    yield Event::Html("<table class=\"codenum\"><tbody><tr><td>".into());
+                    yield Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced("".into())));
+                    yield Event::Text(
+                        (1..(count + 1))
+                            .map(|i| i.to_string())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                            .into(),
                     );
+                    yield Event::End(TagEnd::CodeBlock);
+                    yield Event::Html("</td><td>".into());
+                    for e in body {
+                        yield e;
+                    }
+                    yield Event::Html("</td></tr></tbody></table>".into());
                 }
                 None => {
-                    yield Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(
-                        lang.clone().unwrap_or_default().into(),
-                    )));
-                    yield Event::Text(code.into());
-                    yield Event::End(TagEnd::CodeBlock);
+                    for e in body {
+                        yield e;
+                    }
                 }
             }
-        };
-
-        match lines {
-            Some(count) => {
-                yield Event::Html("<table class=\"codenum\"><tbody><tr><td>".into());
-                yield Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced("".into())));
-                yield Event::Text(
-                    (1..(count + 1))
-                        .map(|i| i.to_string())
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                        .into(),
-                );
-                yield Event::End(TagEnd::CodeBlock);
-                yield Event::Html("</td><td>".into());
-                for e in body {
-                    yield e;
-                }
-                yield Event::Html("</td></tr></tbody></table>".into());
-            }
-            None => {
-                for e in body {
-                    yield e;
-                }
-            }
-        }
+        })()
     }
 
     pub fn format_codeblocks<'a>(

@@ -32,7 +32,7 @@
 //! destination directory. Many files are copied directly, but this also
 //! generates HTML pages from the rendered markdown contents of the last phase.
 
-#![feature(gen_blocks)]
+#![feature(iter_macro, yield_expr)]
 
 use generator::GeneratorError;
 use miette::Diagnostic;

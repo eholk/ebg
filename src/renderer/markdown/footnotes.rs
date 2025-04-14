@@ -1,40 +1,44 @@
 //! Markdown filters for adjusting the way footnotes show up.
 
+use std::iter::iter;
+
 use pulldown_cmark::{Event, Tag, TagEnd};
 
 /// Gathers all footnote definitions and pulls them to the end
-pub gen fn collect_footnotes<'a>(mut parser: impl Iterator<Item = Event<'a>>) -> Event<'a> {
-    let mut count = 0;
-    let mut footnotes = vec![];
+pub fn collect_footnotes<'a>(mut parser: impl Iterator<Item = Event<'a>>) -> impl Iterator<Item = Event<'a>> {
+    iter!(move || {
+        let mut count = 0;
+        let mut footnotes = vec![];
 
-    // can't use a for loop because we pass `&mut parser` to `collect_footnote_def`
-    while let Some(e) = parser.next() {
-        match e {
-            Event::FootnoteReference(tag) => {
-                count += 1;
-                // Manually render footnote here so we can add a backlink id
-                let html = format!(
-                    r##"<sup class="footnote-reference"><a href="#{tag}" id="fnref:{tag}">{count}</a></sup>"##,
-                );
-                yield Event::Html(html.into());
-            }
-            Event::Start(Tag::FootnoteDefinition(tag)) => {
-                footnotes.push(Event::Start(Tag::FootnoteDefinition(tag.clone())));
-                collect_footnote_def(&mut parser, &tag, &mut footnotes);
-            }
-            e => {
-                yield e;
+        // can't use a for loop because we pass `&mut parser` to `collect_footnote_def`
+        while let Some(e) = parser.next() {
+            match e {
+                Event::FootnoteReference(tag) => {
+                    count += 1;
+                    // Manually render footnote here so we can add a backlink id
+                    let html = format!(
+                        r##"<sup class="footnote-reference"><a href="#{tag}" id="fnref:{tag}">{count}</a></sup>"##,
+                    );
+                    yield Event::Html(html.into());
+                }
+                Event::Start(Tag::FootnoteDefinition(tag)) => {
+                    footnotes.push(Event::Start(Tag::FootnoteDefinition(tag.clone())));
+                    collect_footnote_def(&mut parser, &tag, &mut footnotes);
+                }
+                e => {
+                    yield e;
+                }
             }
         }
-    }
 
-    if !footnotes.is_empty() {
-        yield Event::Rule;
-    }
+        if !footnotes.is_empty() {
+            yield Event::Rule;
+        }
 
-    for e in footnotes {
-        yield e;
-    }
+        for e in footnotes {
+            yield e;
+        }
+    })()
 }
 
 fn collect_footnote_def<'a>(
