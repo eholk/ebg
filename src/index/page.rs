@@ -31,8 +31,8 @@ pub struct FrontMatter {
     date: Option<Date>,
     #[allow(unused)]
     comments: Option<bool>,
-    #[allow(unused)]
-    categories: Option<Vec<String>>,
+    #[serde(default)]
+    categories: Vec<String>,
     #[allow(unused)]
     #[serde(default)]
     #[serde(deserialize_with = "deserialize_comma_separated_list")]
@@ -42,11 +42,13 @@ pub struct FrontMatter {
     external_url: Option<String>,
     #[allow(dead_code)] // FIXME: remove this when we start using this
     permalink: Option<String>,
-    #[serde(default = "mk_true")]
+    #[serde(default = "default_true")]
     published: bool,
+    #[serde(default = "default_true")]
+    show_in_home: bool,
 }
 
-fn mk_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 
@@ -201,6 +203,17 @@ impl PageSource {
     pub fn source_path(&self) -> &Path {
         self.source.as_path()
     }
+
+    pub fn categories(&self) -> Option<impl Iterator<Item = &str>> {
+        self.frontmatter()
+            .map(|frontmatter| frontmatter.categories.iter().map(|s| s.as_str()))
+    }
+
+    pub fn show_in_home(&self) -> bool {
+        self.frontmatter()
+            .map(|front| front.show_in_home)
+            .unwrap_or(true)
+    }
 }
 
 pub trait PageMetadata {
@@ -332,9 +345,9 @@ fn parse_date_from_filename(filename: &str) -> Option<(Date, &str)> {
 
 #[cfg(test)]
 mod test {
-    use crate::index::{page::PageMetadata, SourceFormat};
+    use crate::index::{SourceFormat, page::PageMetadata};
 
-    use super::{parse_filename, FrontMatter, PageSource};
+    use super::{FrontMatter, PageSource, parse_filename};
     use chrono::{DateTime, Local, TimeZone, Utc};
     use miette::IntoDiagnostic;
     use std::path::Path;

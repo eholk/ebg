@@ -5,7 +5,7 @@ use std::{
 
 use miette::Diagnostic;
 use pathdiff::diff_paths;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::fs;
 use tera::Tera;
 use thiserror::Error;
@@ -123,6 +123,29 @@ impl<'a> GeneratorContext<'a> {
             .map_err(|e| GeneratorError::CreateDestDir(self.options.destination.clone(), e))?;
 
         // Generate pages
+        self.generate_pages(site)?;
+
+        // Copy raw files (those that don't need processing or generation)
+        self.copy_raw_files(site)?;
+
+        // Generate the atom feed
+        generate_atom(
+            site,
+            std::fs::File::create(self.options.destination.join("atom.xml"))
+                .map_err(|e| GeneratorError::CreateFile("atom.xml".into(), e))?,
+        )
+        .map_err(GeneratorError::AtomError)?;
+
+        // FIXME(#199): We should add per-category atom feeds
+
+        if let Some(cleanup) = cleanup {
+            cleanup.await.unwrap()
+        }
+
+        Ok(())
+    }
+
+    fn generate_pages(&self, site: &RenderedSite<'_>) -> Result<(), GeneratorError> {
         site.all_pages()
             .collect::<Vec<_>>()
             .par_iter()
@@ -137,40 +160,8 @@ impl<'a> GeneratorContext<'a> {
                 Ok::<_, GeneratorError>(())
             })?;
 
-        // Copy raw files (those that don't need processing or generation)
-        for file in site.raw_files() {
-            debug!(
-                "copying from {}, root {}",
-                file.display(),
-                site.root_dir().display()
-            );
-            let Some(relative_dest) = diff_paths(file, site.root_dir()) else {
-                return Err(GeneratorError::ComputeRelativePath(file.into()))?;
-            };
-            let dest = self.options.destination.join(relative_dest);
-
-            if let Some(parent) = dest.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| GeneratorError::CreateDestDir(parent.into(), e))?;
-            }
-
-            fs::copy(file, &dest).map_err(|e| GeneratorError::Copy(file.into(), dest, e))?;
-        }
-
-        // Generate the atom feed
-        //
-        // FIXME: this is only relevant if we have posts. Maybe it should have an option to disable it
-        // in the site config?
-        generate_atom(
-            site,
-            std::fs::File::create(self.options.destination.join("atom.xml"))
-                .map_err(|e| GeneratorError::CreateFile("atom.xml".into(), e))?,
-        )
-        .map_err(GeneratorError::AtomError)?;
-
-        if let Some(cleanup) = cleanup {
-            cleanup.await.unwrap()
-        }
+        // Generate category index pages
+        for _category in site.categories_and_pages() {}
 
         Ok(())
     }
@@ -222,6 +213,28 @@ impl<'a> GeneratorContext<'a> {
 
         Ok(())
     }
+
+    fn copy_raw_files(&self, site: &RenderedSite<'_>) -> Result<(), GeneratorError> {
+        for file in site.raw_files() {
+            debug!(
+                "copying from {}, root {}",
+                file.display(),
+                site.root_dir().display()
+            );
+            let Some(relative_dest) = diff_paths(file, site.root_dir()) else {
+                return Err(GeneratorError::ComputeRelativePath(file.into()))?;
+            };
+            let dest = self.options.destination.join(relative_dest);
+
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| GeneratorError::CreateDestDir(parent.into(), e))?;
+            }
+
+            fs::copy(file, &dest).map_err(|e| GeneratorError::Copy(file.into(), dest, e))?;
+        }
+        Ok(())
+    }
 }
 
 /// Converts an object into a format that can be passed to a Tera template
@@ -242,6 +255,10 @@ impl ToValue for RenderedPageRef<'_> {
             json!(self.rendered_excerpt().unwrap_or(self.rendered_contents())),
         );
         page.insert("content".to_string(), json!(self.rendered_contents()));
+        page.insert(
+            "show_in_home".to_string(),
+            json!(self.source.show_in_home()),
+        );
         page.into()
     }
 }
@@ -263,11 +280,32 @@ impl ToValue for RenderedSite<'_> {
 
         site.insert(
             "posts".to_string(),
-            json!(posts
-                .into_iter()
-                .map(|post| post.value())
-                .collect::<Vec<_>>()),
+            json!(
+                posts
+                    .into_iter()
+                    .map(|post| post.value())
+                    .collect::<Vec<_>>()
+            ),
         );
+
+        site.insert(
+            "categories".to_string(),
+            json!(
+                self.categories_and_pages()
+                    .into_iter()
+                    .map(|(category, pages)| {
+                        let mut c = Map::new();
+                        c.insert("name".to_string(), json!(category.name));
+                        c.insert(
+                            "posts".to_string(),
+                            pages.map(|page| page.value()).collect::<Vec<_>>().into(),
+                        );
+                        c
+                    })
+                    .collect::<Vec<_>>()
+            ),
+        );
+
         site.into()
     }
 }
