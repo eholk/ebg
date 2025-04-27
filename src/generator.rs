@@ -161,9 +161,9 @@ impl<'a> GeneratorContext<'a> {
             })?;
 
         // Generate category index pages
-        for _category in site.categories_and_pages() {}
-
-        Ok(())
+        for _category in site.categories_and_pages() {
+            // TODO: Implement functionality to generate per-category index pages.
+        }
     }
 
     fn generate_page(
