@@ -160,10 +160,8 @@ impl<'a> GeneratorContext<'a> {
                 Ok::<_, GeneratorError>(())
             })?;
 
-        // Generate category index pages
-        for _category in site.categories_and_pages() {
-            // TODO: Implement functionality to generate per-category index pages.
-        }
+        // FIXME(#199): Implement functionality to generate per-category index pages.
+        Ok(())
     }
 
     fn generate_page(
