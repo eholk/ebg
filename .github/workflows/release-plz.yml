@@ -58,3 +58,50 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      
+      # New steps to update Dockerfile in the version bump PR
+      - name: Extract new version from Cargo.toml
+        id: extract_version
+        run: |
+          NEW_VERSION=$(grep -m 1 '^version = ' Cargo.toml | sed 's/^version = "\(.*\)"$/\1/')
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "Extracted version: $NEW_VERSION"
+      
+      - name: Extract Rust version from rust-toolchain.toml
+        id: rust_version
+        run: |
+          RUST_CHANNEL=$(grep -oP 'channel\s*=\s*"\K[^"]+' rust-toolchain.toml)
+          echo "RUST_CHANNEL=$RUST_CHANNEL" >> $GITHUB_ENV
+          echo "Rust channel: $RUST_CHANNEL"
+      
+      - name: Update Dockerfile with new versions
+        run: |
+          # Create a new Dockerfile with updated version info
+          cat > Dockerfile.new << EOF
+          FROM rust:${RUST_CHANNEL}
+
+          # Run rustup update so we pick up the toolchain version in rust-toolchain.toml
+          RUN cargo install ebg --version ${NEW_VERSION}
+          EOF
+
+          # Replace the original Dockerfile
+          mv Dockerfile.new Dockerfile
+          
+          # Show the updated Dockerfile
+          cat Dockerfile
+      
+      - name: Commit updated Dockerfile to release PR branch
+        run: |
+          # The PR branch created by release-plz follows the pattern "release-plz/bump-<version>"
+          PR_BRANCH=$(git branch -r | grep "origin/release-plz/bump" | sed 's/origin\///' | head -n 1)
+          
+          if [ -n "$PR_BRANCH" ]; then
+            git config --local user.email "github-actions[bot]@users.noreply.github.com"
+            git config --local user.name "github-actions[bot]"
+            git add Dockerfile
+            git commit -m "Update Dockerfile for version ${NEW_VERSION}"
+            git push origin HEAD:$PR_BRANCH
+            echo "Updated Dockerfile in $PR_BRANCH"
+          else
+            echo "No release-plz PR branch found"
+          fi
