@@ -59,7 +59,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        # New steps to update Dockerfile in the version bump PR
+      
+      # New steps to update Dockerfile in the version bump PR
       - name: Extract versions and update Dockerfile
         id: update_dockerfile
         run: |
@@ -83,6 +84,9 @@ jobs:
           # Show the updated Dockerfile
           echo "Updated Dockerfile:"
           cat Dockerfile
+          
+          # Save the version for the next step
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
       
       - name: Commit updated Dockerfile to release PR branch
         if: ${{ fromJson(steps.release-plz.outputs.pr).head_branch != '' }}
@@ -92,9 +96,23 @@ jobs:
           
           echo "Using PR branch from release-plz output: $PR_BRANCH"
           
+          # Fetch the remote branch
+          git fetch origin "$PR_BRANCH"
+          
+          # Save our Dockerfile changes
+          cp Dockerfile Dockerfile.updated
+          
+          # Checkout the PR branch
+          git checkout "$PR_BRANCH"
+          
+          # Restore our updated Dockerfile
+          cp Dockerfile.updated Dockerfile
+          rm Dockerfile.updated
+          
+          # Commit and push changes
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add Dockerfile
           git commit -m "Update Dockerfile for version ${NEW_VERSION}"
-          git push origin HEAD:$PR_BRANCH
+          git push origin "$PR_BRANCH"
           echo "Updated Dockerfile in $PR_BRANCH"
