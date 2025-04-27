@@ -61,10 +61,21 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       
       # New steps to update Dockerfile in the version bump PR
-      - name: Extract versions and update Dockerfile
+      - name: Update Dockerfile with new versions from PR branch
+        if: ${{ fromJson(steps.release-plz.outputs.pr).head_branch != '' }}
         id: update_dockerfile
         run: |
-          # Extract new version from Cargo.toml
+          # Get the PR branch name from release-plz output
+          PR_BRANCH="${{ fromJson(steps.release-plz.outputs.pr).head_branch }}"
+          echo "Using PR branch from release-plz output: $PR_BRANCH"
+          
+          # Fetch the remote branch
+          git fetch origin "$PR_BRANCH"
+          
+          # Checkout the PR branch
+          git checkout "$PR_BRANCH"
+          
+          # Now extract new version from Cargo.toml in the PR branch
           NEW_VERSION=$(grep -m 1 '^version = ' Cargo.toml | sed 's/^version = "\(.*\)"$/\1/')
           echo "Extracted EBG version: $NEW_VERSION"
           
@@ -91,28 +102,12 @@ jobs:
       - name: Commit updated Dockerfile to release PR branch
         if: ${{ fromJson(steps.release-plz.outputs.pr).head_branch != '' }}
         run: |
-          # Use the head_branch from release-plz output
-          PR_BRANCH="${{ fromJson(steps.release-plz.outputs.pr).head_branch }}"
-          
-          echo "Using PR branch from release-plz output: $PR_BRANCH"
-          
-          # Fetch the remote branch
-          git fetch origin "$PR_BRANCH"
-          
-          # Save our Dockerfile changes
-          cp Dockerfile Dockerfile.updated
-          
-          # Checkout the PR branch
-          git checkout "$PR_BRANCH"
-          
-          # Restore our updated Dockerfile
-          cp Dockerfile.updated Dockerfile
-          rm Dockerfile.updated
+          # We're already on the PR branch from the previous step
           
           # Commit and push changes
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add Dockerfile
           git commit -m "Update Dockerfile for version ${NEW_VERSION}"
-          git push origin "$PR_BRANCH"
-          echo "Updated Dockerfile in $PR_BRANCH"
+          git push origin HEAD
+          echo "Updated Dockerfile in PR branch"
