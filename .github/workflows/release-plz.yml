@@ -64,7 +64,10 @@ jobs:
         id: extract_version
         run: |
           NEW_VERSION=$(grep -m 1 '^version = ' Cargo.toml | sed 's/^version = "\(.*\)"$/\1/')
-          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          if [ -z "$NEW_VERSION" ]; then
+            echo "Error: Failed to extract version from Cargo.toml. Ensure the file contains a valid 'version' line." >&2
+            exit 1
+          fi
           echo "Extracted version: $NEW_VERSION"
       
       - name: Extract Rust version from rust-toolchain.toml
