@@ -4,8 +4,8 @@ use std::io::Write;
 
 use chrono::Utc;
 use quick_xml::{
-    events::{BytesCData, BytesDecl, BytesText, Event::*},
     Writer,
+    events::{BytesCData, BytesDecl, BytesText, Event::*},
 };
 use thiserror::Error;
 
@@ -92,7 +92,7 @@ pub(crate) fn generate_atom(
                 )?;
             }
 
-            let mut posts: Vec<_> = site.posts().collect();
+            let mut posts: Vec<_> = site.posts().filter(|p| p.source.show_in_home()).collect();
             posts.sort_by_key(|b| std::cmp::Reverse(b.publish_date()));
 
             for post in posts.into_iter().take(10) {

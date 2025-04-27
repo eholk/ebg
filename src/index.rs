@@ -1,7 +1,8 @@
 //! Contains data structures that represent the full site.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
+    ops::Index,
     path::{Path, PathBuf},
 };
 
@@ -66,6 +67,7 @@ pub struct SiteIndex {
     root_dir: PathBuf,
     pages: Vec<PageSource>,
     raw_files: Vec<PathBuf>,
+    categories: BTreeMap<String, Category>,
 }
 
 impl SiteIndex {
@@ -103,11 +105,32 @@ impl SiteIndex {
             }
         }
 
+        // Gather all the category information
+        let mut categories = BTreeMap::new();
+        for (id, page) in pages.iter().enumerate() {
+            match page.categories() {
+                Some(page_categories) => {
+                    for category in page_categories {
+                        categories
+                            .entry(category.to_string())
+                            .or_insert_with(|| Category {
+                                name: category.to_string(),
+                                posts: vec![],
+                            })
+                            .posts
+                            .push(PageId(id));
+                    }
+                }
+                None => (),
+            }
+        }
+
         Ok(SiteIndex {
             config,
             root_dir,
             pages,
             raw_files,
+            categories,
         })
     }
 
@@ -134,6 +157,26 @@ impl SiteIndex {
     /// but it can be helpful in building mock sites for testing.
     pub fn add_page(&mut self, page: PageSource) {
         self.pages.push(page);
+    }
+
+    pub fn categories(&self) -> impl Iterator<Item = &Category> {
+        self.categories.values()
+    }
+
+    pub fn find_pages_in_category(&self, category: &str) -> impl Iterator<Item = &PageSource> {
+        self.categories
+            .get(category)
+            .into_iter()
+            .flat_map(|cat| cat.posts.iter())
+            .map(|id| &self.pages[id.0])
+    }
+}
+
+impl Index<PageId> for SiteIndex {
+    type Output = PageSource;
+
+    fn index(&self, id: PageId) -> &Self::Output {
+        &self.pages[id.0]
     }
 }
 
@@ -285,6 +328,13 @@ async fn load_directory(
     }
 
     Ok((pages, raw_files))
+}
+
+pub struct PageId(usize);
+
+pub struct Category {
+    pub(crate) name: String,
+    posts: Vec<PageId>,
 }
 
 #[cfg(test)]
