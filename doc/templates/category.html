@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ category }} - {{ site.title }}</title>
+    <link rel="stylesheet" href="/assets/main.css">
+</head>
+<body>
+    <header>
+        <h1><a href="/">{{ site.title }}</a></h1>
+        <nav>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/about/">About</a></li>
+                <li><a href="/blog/">Blog</a></li>
+            </ul>
+        </nav>
+    </header>
+    
+    <main>
+        <div class="category-header">
+            <h1>Category: {{ category }}</h1>
+            <p>Posts related to {{ category }}</p>
+        </div>
+        
+        <div class="posts">
+            {% for post in posts %}
+            <article class="post-summary">
+                <h2><a href="{{ post.url }}">{{ post.title }}</a></h2>
+                <div class="post-excerpt">
+                    {{ post.excerpt | safe }}
+                </div>
+                <a href="{{ post.url }}" class="read-more">Read more</a>
+            </article>
+            {% endfor %}
+        </div>
+    </main>
+    
+    <footer>
+        <p>&copy; {{ site.title }}</p>
+    </footer>
+</body>
+</html>
+    </main>
+    
+    <footer>
+        <p>&copy; {% if site.author %}{{ site.author }}{% else %}Site Owner{% endif %}</p>
+    </footer>
+</body>
+</html>
