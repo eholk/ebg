@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.3](https://github.com/eholk/ebg/compare/v0.5.2...v0.5.3) - 2025-05-07
+
+### Added
+
+- add category index pages
+
+### Other
+
+- Bump url from 2.5.2 to 2.5.4
+- Bump thiserror from 2.0.11 to 2.0.12
+- Bump futures from 0.3.30 to 0.3.31
+- Bump clap from 4.5.27 to 4.5.37
+- Update doc/templates/category.html
+
 ## [0.5.2](https://github.com/eholk/ebg/compare/v0.5.1...v0.5.2) - 2025-04-27
 
 ### Other
