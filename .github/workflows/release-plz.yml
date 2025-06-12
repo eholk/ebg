@@ -41,14 +41,33 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             console.log('Release-plz created releases. Triggering Docker release workflow...');
+            
+            // Get the latest release to find the tag
+            let releaseTag = null;
+            try {
+              const latestRelease = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              releaseTag = latestRelease.data.tag_name;
+              console.log('Found latest release tag:', releaseTag);
+            } catch (error) {
+              console.error('Failed to get latest release:', error);
+              // Fallback to main if we can't get the release tag
+              releaseTag = 'main';
+            }
+            
             try {
               const response = await github.rest.actions.createWorkflowDispatch({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 workflow_id: 'docker-release.yml',
-                ref: 'main'
+                ref: 'main',
+                inputs: {
+                  release_tag: releaseTag
+                }
               });
-              console.log('Successfully triggered Docker release workflow');
+              console.log('Successfully triggered Docker release workflow with tag:', releaseTag);
               console.log('Response status:', response.status);
             } catch (error) {
               console.error('Failed to trigger Docker release workflow:', error);
