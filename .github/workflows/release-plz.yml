@@ -35,18 +35,25 @@ jobs:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
       
       - name: Trigger Docker release workflow
-        if: ${{ steps.release-plz.outputs.releases_created == 'true' }}
+        if: ${{ steps.release-plz.conclusion == 'success' }}
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            console.log('Triggering Docker release workflow after successful release creation');
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'docker-release.yml',
-              ref: 'main'
-            });
+            console.log('Release-plz created releases. Triggering Docker release workflow...');
+            try {
+              const response = await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'docker-release.yml',
+                ref: 'main'
+              });
+              console.log('Successfully triggered Docker release workflow');
+              console.log('Response status:', response.status);
+            } catch (error) {
+              console.error('Failed to trigger Docker release workflow:', error);
+              throw error;
+            }
 
   # Create a PR with the new versions and changelog, preparing the next release.
   release-plz-pr:
