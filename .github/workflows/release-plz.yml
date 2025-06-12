@@ -53,8 +53,7 @@ jobs:
               console.log('Found latest release tag:', releaseTag);
             } catch (error) {
               console.error('Failed to get latest release:', error);
-              // Fallback to main if we can't get the release tag
-              releaseTag = 'main';
+              throw new Error('Could not retrieve release tag - failing workflow to prevent building from wrong ref');
             }
             
             try {
