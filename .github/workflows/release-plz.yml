@@ -26,12 +26,52 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Run release-plz
+        id: release-plz
         uses: release-plz/action@v0.5
         with:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      
+      - name: Trigger Docker release workflow
+        if: ${{ steps.release-plz.conclusion == 'success' }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            console.log('Release-plz created releases. Triggering Docker release workflow...');
+            
+            // Get the latest release to find the tag
+            let releaseTag = null;
+            try {
+              const latestRelease = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              releaseTag = latestRelease.data.tag_name;
+              console.log('Found latest release tag:', releaseTag);
+            } catch (error) {
+              console.error('Failed to get latest release:', error);
+              throw new Error('Could not retrieve release tag - failing workflow to prevent building from wrong ref');
+            }
+            
+            try {
+              const response = await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'docker-release.yml',
+                ref: 'main',
+                inputs: {
+                  release_tag: releaseTag
+                }
+              });
+              console.log('Successfully triggered Docker release workflow with tag:', releaseTag);
+              console.log('Response status:', response.status);
+            } catch (error) {
+              console.error('Failed to trigger Docker release workflow:', error);
+              throw error;
+            }
 
   # Create a PR with the new versions and changelog, preparing the next release.
   release-plz-pr:
