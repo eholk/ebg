@@ -1,4 +1,13 @@
 //! Rendering sites into sitemap.xml files
+//!
+//! This module generates XML sitemaps according to the sitemaps.org protocol.
+//! The generated sitemap includes:
+//! - Main site URL with high priority and daily change frequency
+//! - All blog posts with last modification date and medium priority
+//! - All regular pages with lower priority
+//! - Category pages with medium priority
+//!
+//! See: https://www.sitemaps.org/protocol.html
 
 use std::io::Write;
 
