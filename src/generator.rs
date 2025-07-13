@@ -18,11 +18,12 @@ use crate::{
 use clap::Args;
 use clap::ValueHint::DirPath;
 
-use self::{atom::generate_atom, theme::create_template_engine};
+use self::{atom::generate_atom, sitemap::generate_sitemap, theme::create_template_engine};
 
 use rayon::prelude::*;
 
 mod atom;
+mod sitemap;
 mod theme;
 
 #[derive(Args, Clone)]
@@ -42,6 +43,8 @@ pub struct Options {
 pub enum GeneratorError {
     #[error("generating atom feed")]
     AtomError(#[source] atom::AtomError),
+    #[error("generating sitemap")]
+    SitemapError(#[source] sitemap::SitemapError),
     #[error("could not compute relative path for {0}")]
     ComputeRelativePath(PathBuf),
     #[error("removing old destination directory: {}", .0.display())]
@@ -141,6 +144,14 @@ impl<'a> GeneratorContext<'a> {
                 .map_err(|e| GeneratorError::CreateFile("atom.xml".into(), e))?,
         )
         .map_err(GeneratorError::AtomError)?;
+
+        // Generate the sitemap
+        generate_sitemap(
+            site,
+            std::fs::File::create(self.options.destination.join("sitemap.xml"))
+                .map_err(|e| GeneratorError::CreateFile("sitemap.xml".into(), e))?,
+        )
+        .map_err(GeneratorError::SitemapError)?;
 
         // FIXME(#199): We should add per-category atom feeds
 
