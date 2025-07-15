@@ -73,16 +73,6 @@ pub trait Observer: Send + Sync {
     fn site_complete(&self, _site: &dyn SiteMetadata) {}
 }
 
-/// Generate a relative category URL path (e.g., "/blog/category/tech/")
-pub fn category_url_path(category_slug: &str) -> String {
-    format!("/blog/category/{}/", category_slug)
-}
-
-/// Generate a full category URL with base URL (e.g., "https://example.com/blog/category/tech/")
-pub fn category_full_url(base_url: &str, category_slug: &str) -> String {
-    format!("{}/blog/category/{}/", base_url, category_slug)
-}
-
 /// Holds dynamic state and configuration needed to render a site.
 pub struct GeneratorContext<'a> {
     templates: Tera,
@@ -199,7 +189,7 @@ impl<'a> GeneratorContext<'a> {
     fn generate_category_pages(&self, site: &RenderedSite<'_>) -> Result<(), GeneratorError> {
         // Iterate through all categories
         for (category, pages) in site.categories_and_pages() {            // Create a directory for the category using a slug of its name
-            let category_slug = slug::slugify(&category.name);
+            let category_slug = category.slug();
             let dest_dir = self.options.destination
                 .join("blog")
                 .join("category")
@@ -220,7 +210,7 @@ impl<'a> GeneratorContext<'a> {
               // Create a page value with title for the category
             let mut page_value = serde_json::Map::new();
             page_value.insert("title".to_string(), serde_json::json!(format!("Category: {}", category.name)));
-            page_value.insert("url".to_string(), serde_json::json!(category_url_path(&category_slug)));
+            page_value.insert("url".to_string(), serde_json::json!(category.url_path()));
             page_value.insert("content".to_string(), serde_json::json!(""));
             context.insert("page", &page_value);
             

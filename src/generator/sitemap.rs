@@ -21,7 +21,6 @@ use thiserror::Error;
 use crate::{
     index::{PageMetadata, SiteMetadata},
     renderer::RenderedSite,
-    generator::category_full_url,
 };
 
 #[derive(Error, Debug, Diagnostic)]
@@ -113,8 +112,7 @@ pub(crate) fn generate_sitemap(
 
             // Add category pages if they exist
             for (category, _) in site.categories_and_pages() {
-                let category_slug = slug::slugify(&category.name);
-                let category_url = category_full_url(site.base_url(), &category_slug);
+                let category_url = category.full_url(site.base_url());
                 
                 writer.create_element("url").write_inner_content(
                     |writer: &mut Writer<_>| -> Result<(), _> {

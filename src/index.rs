@@ -337,6 +337,23 @@ pub struct Category {
     posts: Vec<PageId>,
 }
 
+impl Category {
+    /// Generate the slug for this category
+    pub fn slug(&self) -> String {
+        slug::slugify(&self.name)
+    }
+
+    /// Generate a relative URL path for this category (e.g., "/blog/category/tech/")
+    pub fn url_path(&self) -> String {
+        format!("/blog/category/{}/", self.slug())
+    }
+
+    /// Generate a full URL for this category with the given base URL (e.g., "https://example.com/blog/category/tech/")
+    pub fn full_url(&self, base_url: &str) -> String {
+        format!("{}/blog/category/{}/", base_url, self.slug())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::Config;
