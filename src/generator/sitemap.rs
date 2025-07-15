@@ -21,6 +21,7 @@ use thiserror::Error;
 use crate::{
     index::{PageMetadata, SiteMetadata},
     renderer::RenderedSite,
+    generator::category_full_url,
 };
 
 #[derive(Error, Debug, Diagnostic)]
@@ -113,7 +114,7 @@ pub(crate) fn generate_sitemap(
             // Add category pages if they exist
             for (category, _) in site.categories_and_pages() {
                 let category_slug = slug::slugify(&category.name);
-                let category_url = format!("{}/blog/category/{}/", site.base_url(), category_slug);
+                let category_url = category_full_url(site.base_url(), &category_slug);
                 
                 writer.create_element("url").write_inner_content(
                     |writer: &mut Writer<_>| -> Result<(), _> {
@@ -171,24 +172,31 @@ mod test {
         
         let sitemap_xml = String::from_utf8(output).unwrap();
         
-        // Verify the sitemap contains expected XML structure
-        assert!(sitemap_xml.contains("<?xml version=\"1.0\" encoding=\"utf-8\"?>"));
-        assert!(sitemap_xml.contains("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">"));
-        assert!(sitemap_xml.contains("</urlset>"));
+        // Test for explicit expected XML structure with correct ordering
+        let expected_patterns = [
+            r#"<?xml version="1.0" encoding="utf-8"?>"#,
+            r#"<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">"#,
+            // Main site URL (should come first)
+            r#"<url><loc></loc><changefreq>daily</changefreq><priority>1.0</priority></url>"#,
+            // Blog post with date
+            r#"<url><loc>/blog/2023/01/01/test-post/</loc><lastmod>2023-01-01</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>"#,
+            // Regular page
+            r#"<url><loc>/about</loc><lastmod>1970-01-01</lastmod><changefreq>yearly</changefreq><priority>0.6</priority></url>"#,
+            r#"</urlset>"#,
+        ];
         
-        // Verify main elements are present
-        assert!(sitemap_xml.contains("<url>"));
-        assert!(sitemap_xml.contains("</url>"));
-        assert!(sitemap_xml.contains("<loc>"));
-        assert!(sitemap_xml.contains("</loc>"));
-        
-        // Verify changefreq and priority are included
-        assert!(sitemap_xml.contains("<changefreq>"));
-        assert!(sitemap_xml.contains("<priority>"));
-        
-        // Basic sanity check - should contain references to our test pages
-        assert!(sitemap_xml.contains("/blog/2023/01/01/test-post/"));
-        assert!(sitemap_xml.contains("/about"));
+        // Verify each expected pattern appears in the correct order
+        let mut last_position = 0;
+        for pattern in expected_patterns {
+            match sitemap_xml[last_position..].find(pattern) {
+                Some(pos) => {
+                    last_position += pos + pattern.len();
+                }
+                None => {
+                    panic!("Expected pattern not found in sitemap: {}", pattern);
+                }
+            }
+        }
         
         Ok(())
     }
