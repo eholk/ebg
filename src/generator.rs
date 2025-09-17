@@ -18,11 +18,12 @@ use crate::{
 use clap::Args;
 use clap::ValueHint::DirPath;
 
-use self::{atom::generate_atom, theme::create_template_engine};
+use self::{atom::generate_atom, sitemap::generate_sitemap, theme::create_template_engine};
 
 use rayon::prelude::*;
 
 mod atom;
+mod sitemap;
 mod theme;
 
 #[derive(Args, Clone)]
@@ -42,6 +43,8 @@ pub struct Options {
 pub enum GeneratorError {
     #[error("generating atom feed")]
     AtomError(#[source] atom::AtomError),
+    #[error("generating sitemap")]
+    SitemapError(#[source] sitemap::SitemapError),
     #[error("could not compute relative path for {0}")]
     ComputeRelativePath(PathBuf),
     #[error("removing old destination directory: {}", .0.display())]
@@ -142,6 +145,14 @@ impl<'a> GeneratorContext<'a> {
         )
         .map_err(GeneratorError::AtomError)?;
 
+        // Generate the sitemap
+        generate_sitemap(
+            site,
+            std::fs::File::create(self.options.destination.join("sitemap.xml"))
+                .map_err(|e| GeneratorError::CreateFile("sitemap.xml".into(), e))?,
+        )
+        .map_err(GeneratorError::SitemapError)?;
+
         // FIXME(#199): We should add per-category atom feeds
 
         if let Some(cleanup) = cleanup {
@@ -178,7 +189,7 @@ impl<'a> GeneratorContext<'a> {
     fn generate_category_pages(&self, site: &RenderedSite<'_>) -> Result<(), GeneratorError> {
         // Iterate through all categories
         for (category, pages) in site.categories_and_pages() {            // Create a directory for the category using a slug of its name
-            let category_slug = slug::slugify(&category.name);
+            let category_slug = category.slug();
             let dest_dir = self.options.destination
                 .join("blog")
                 .join("category")
@@ -199,7 +210,7 @@ impl<'a> GeneratorContext<'a> {
               // Create a page value with title for the category
             let mut page_value = serde_json::Map::new();
             page_value.insert("title".to_string(), serde_json::json!(format!("Category: {}", category.name)));
-            page_value.insert("url".to_string(), serde_json::json!(format!("/blog/category/{}/", category_slug)));
+            page_value.insert("url".to_string(), serde_json::json!(category.url_path()));
             page_value.insert("content".to_string(), serde_json::json!(""));
             context.insert("page", &page_value);
             
