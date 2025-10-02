@@ -41,7 +41,7 @@ tokio = { version = "1", features = [
     "rt-multi-thread",
 ] }
 tokio-stream = { version = "0.1", features = ["fs"] }
-toml = "0.8"
+toml = "0.9"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["ansi", "env-filter"] }
 url = "2"
