@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5](https://github.com/eholk/ebg/compare/v0.5.4...v0.5.5) - 2025-10-02
+
+### Other
+
+- Bump toml from 0.8.23 to 0.9.7
+- Bump thiserror from 2.0.16 to 2.0.17
+- Bump clap from 4.5.47 to 4.5.48
+- Bump tempfile from 3.21.0 to 3.23.0
+- Bump indicatif from 0.17.11 to 0.18.0
+- cargo update
+- update rust version
+- Fail workflow if release tag cannot be retrieved instead of falling back to main
+- Pass release tag to Docker workflow to ensure consistent builds
+- Improve error handling and logging for Docker workflow trigger
+- Add automatic Docker workflow trigger to release-plz workflow
+
 ## [0.5.4](https://github.com/eholk/ebg/compare/v0.5.3...v0.5.4) - 2025-06-12
 
 ### Other
