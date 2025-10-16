@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1](https://github.com/eholk/ebg/compare/v0.6.0...v0.6.1) - 2025-10-16
+
+### Other
+
+- Add actions: write permission to fix Docker workflow dispatch
+
 ## [0.5.4](https://github.com/eholk/ebg/compare/v0.5.3...v0.5.4) - 2025-06-12
 
 ### Other
