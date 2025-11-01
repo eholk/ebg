@@ -23,7 +23,7 @@ notify = "8"
 open = "5"
 pathdiff = "0.2"
 pulldown-cmark = "0.13"
-quick-xml = "0.37"
+quick-xml = "0.38"
 rayon = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
