@@ -313,8 +313,11 @@ fn parse_filename(path: &Path) -> Result<(Date, SourceFormat, &str), ParseFilena
     let filename = path.file_stem().unwrap().to_str().unwrap();
     
     // Check if this is an index.md file in a directory
-    // If so, try to parse the date from the parent directory name
+    // If so, try to parse the date from the parent directory name instead of "index"
+    // This enables directory-based posts like: _posts/2023-11-08-post-name/index.md
     let name_to_parse = if filename == "index" {
+        // For index.md files, use the parent directory name for date/slug extraction
+        // If we can't get the parent directory name, fall back to "index" (which won't have a date)
         path.parent()
             .and_then(|p| p.file_name())
             .and_then(|n| n.to_str())

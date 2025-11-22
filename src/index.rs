@@ -264,14 +264,15 @@ async fn load_posts(
     while let Some(entry) = dir_stream.next().await {
         let entry = entry.map_err(IndexError::ReadingDirectoryEntry)?;
         let entry_path = entry.path();
+        let metadata = entry.metadata().await.map_err(IndexError::ReadingDirectoryEntry)?;
         
         // Check if this is a directory containing an index.md file
-        let file_to_load = if entry_path.is_dir() {
+        let file_to_load = if metadata.is_dir() {
             let index_file = entry_path.join("index.md");
-            if index_file.exists() {
-                index_file
-            } else {
-                continue; // Skip directories without index.md
+            // Use tokio::fs for async check
+            match fs::try_exists(&index_file).await {
+                Ok(true) => index_file,
+                _ => continue, // Skip directories without index.md
             }
         } else {
             entry_path
