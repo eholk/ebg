@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1](https://github.com/eholk/ebg/compare/v0.6.0...v0.6.1) - 2025-11-22
+
+### Added
+
+- Add an option to set the post date for a new post
+
+### Other
+
+- Apply code review suggestions around setting default date
+- Fix warning
+- Bump clap from 4.5.48 to 4.5.51
+- Bump serde_json from 1.0.143 to 1.0.145
+- Bump tokio from 1.47.1 to 1.48.0
+- Bump quick-xml from 0.37.5 to 0.38.3
+- Bump indicatif from 0.18.0 to 0.18.2
+- Add actions: write permission to fix Docker workflow dispatch
+
 ## [0.5.4](https://github.com/eholk/ebg/compare/v0.5.3...v0.5.4) - 2025-06-12
 
 ### Other
