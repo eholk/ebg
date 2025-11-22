@@ -263,7 +263,21 @@ async fn load_posts(
     );
     while let Some(entry) = dir_stream.next().await {
         let entry = entry.map_err(IndexError::ReadingDirectoryEntry)?;
-        let page = match PageSource::from_file(entry.path(), root_dir).await {
+        let entry_path = entry.path();
+        
+        // Check if this is a directory containing an index.md file
+        let file_to_load = if entry_path.is_dir() {
+            let index_file = entry_path.join("index.md");
+            if index_file.exists() {
+                index_file
+            } else {
+                continue; // Skip directories without index.md
+            }
+        } else {
+            entry_path
+        };
+        
+        let page = match PageSource::from_file(file_to_load, root_dir).await {
             Ok(page) => page,
             Err(e) if e.severity() <= Some(Severity::Warning) => {
                 println!(
