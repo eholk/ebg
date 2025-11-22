@@ -16,8 +16,10 @@ pub struct NewPostOptions {
     open: bool,
 
     /// Set the publish date for the new post
-    #[clap(long, default_value_t = chrono::Local::now().date_naive())]
-    date: NaiveDate,
+    ///
+    /// Defaults to today.
+    #[clap(long)]
+    date: Option<NaiveDate>,
 }
 
 impl super::Command for NewPostOptions {
@@ -40,7 +42,9 @@ impl super::Command for NewPostOptions {
 
         let post_filename = posts_dir.join(format!(
             "{}-{}.md",
-            self.date.format("%Y-%m-%d"),
+            self.date
+                .unwrap_or_else(|| chrono::Local::now().date_naive())
+                .format("%Y-%m-%d"),
             slug::slugify(&self.title)
         ));
         debug!("creating new post at {}", post_filename.display());
@@ -82,6 +86,6 @@ mod test {
         let cmd = NewPostOptions::parse_from(args);
 
         assert_eq!(cmd.title, "Hello, World");
-        assert_eq!(cmd.date, NaiveDate::from_ymd_opt(2025, 11, 21).unwrap());
+        assert_eq!(cmd.date, NaiveDate::from_ymd_opt(2025, 11, 21));
     }
 }
