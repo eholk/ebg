@@ -1,8 +1,9 @@
 use std::{
-    fs::{create_dir, File},
+    fs::{File, create_dir},
     io::Write,
 };
 
+use chrono::NaiveDate;
 use clap::Parser;
 use miette::IntoDiagnostic;
 use tracing::debug;
@@ -13,6 +14,12 @@ pub struct NewPostOptions {
     /// Open the new post in the default editor
     #[clap(long)]
     open: bool,
+
+    /// Set the publish date for the new post
+    ///
+    /// Defaults to today.
+    #[clap(long)]
+    date: Option<NaiveDate>,
 }
 
 impl super::Command for NewPostOptions {
@@ -35,7 +42,9 @@ impl super::Command for NewPostOptions {
 
         let post_filename = posts_dir.join(format!(
             "{}-{}.md",
-            chrono::Local::now().format("%Y-%m-%d"),
+            self.date
+                .unwrap_or_else(|| chrono::Local::now().date_naive())
+                .format("%Y-%m-%d"),
             slug::slugify(&self.title)
         ));
         debug!("creating new post at {}", post_filename.display());
@@ -61,5 +70,22 @@ published: false
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use chrono::NaiveDate;
+    use clap::Parser;
+
+    use super::NewPostOptions;
+
+    #[test]
+    fn parse_new_post_date() {
+        let args = shlex::split("ebg \"Hello, World\" --date 2025-11-21").unwrap();
+        let cmd = NewPostOptions::parse_from(args);
+
+        assert_eq!(cmd.title, "Hello, World");
+        assert_eq!(cmd.date, NaiveDate::from_ymd_opt(2025, 11, 21));
     }
 }

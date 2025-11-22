@@ -92,7 +92,7 @@ impl<'a> SiteMetadata for RenderedSite<'a> {
 }
 
 impl SiteIndex {
-    pub fn render(&self) -> Result<RenderedSite, RenderError> {
+    pub fn render(&self) -> Result<RenderedSite<'_>, RenderError> {
         let code_formatter = CodeFormatter::new();
         let pages = RenderContext::run_dcx(&self, &code_formatter, |ctx| {
             self.all_pages()
