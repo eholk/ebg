@@ -256,7 +256,12 @@ mod test {
     }
 
     fn test_site() -> PathBuf {
-        Path::new(".").join("test").join("data").join("html")
+        // Use CARGO_MANIFEST_DIR to get an absolute path to the project root
+        // This ensures the test works regardless of the current working directory
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test")
+            .join("data")
+            .join("html")
     }
 
     /// Make sure we can fetch a file that's known to exist
