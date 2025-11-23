@@ -292,6 +292,7 @@ pub enum ParseFilenameError {
 /// Extracts the publish date, page kind, and title from a path like
 /// `_posts/2022-10-14-hello-world.md`, or returns None if the file doesn't match
 /// the expected format.
+/// Also handles directory-based posts like `_posts/2022-10-14-hello-world/index.md`
 fn parse_filename(path: &Path) -> Result<(Date, SourceFormat, &str), ParseFilenameError> {
     let kind = match path.extension().and_then(|ext| ext.to_str()) {
         Some("md" | "markdown") => SourceFormat::Markdown,
@@ -310,13 +311,28 @@ fn parse_filename(path: &Path) -> Result<(Date, SourceFormat, &str), ParseFilena
 
     // FIXME: replace unwraps with diagnostics to explain why the date is wrong.
     let filename = path.file_stem().unwrap().to_str().unwrap();
-    match parse_date_from_filename(filename) {
+    
+    // Check if this is an index.md file in a directory
+    // If so, try to parse the date from the parent directory name instead of "index"
+    // This enables directory-based posts like: _posts/2023-11-08-post-name/index.md
+    let name_to_parse = if filename == "index" {
+        // For index.md files, use the parent directory name for date/slug extraction
+        // If we can't get the parent directory name, fall back to "index" (which won't have a date)
+        path.parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or(filename)
+    } else {
+        filename
+    };
+    
+    match parse_date_from_filename(name_to_parse) {
         Some((date, rest)) => Ok((date, kind, rest)),
         None => Ok((
             // FIXME: We should return an option rather than fabricating a date
             DateTime::from_timestamp_millis(0).unwrap(),
             kind,
-            filename,
+            name_to_parse,
         )),
     }
 }
@@ -593,6 +609,53 @@ Hello, world!
                 "long-file-name"
             ))
         );
+    }
+
+    #[test]
+    fn parse_directory_based_post() {
+        // Test parsing a directory-based post like _posts/2022-10-14-hello-world/index.md
+        assert_eq!(
+            parse_filename(Path::new("_posts/2022-10-14-hello-world/index.md")),
+            Ok((
+                Local
+                    .with_ymd_and_hms(2022, 10, 14, 0, 0, 0)
+                    .unwrap()
+                    .with_timezone(&Utc),
+                SourceFormat::Markdown,
+                "hello-world"
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_directory_based_post_with_long_name() {
+        assert_eq!(
+            parse_filename(Path::new("_posts/2023-11-08-new-post/index.md")),
+            Ok((
+                Local
+                    .with_ymd_and_hms(2023, 11, 8, 0, 0, 0)
+                    .unwrap()
+                    .with_timezone(&Utc),
+                SourceFormat::Markdown,
+                "new-post"
+            ))
+        );
+    }
+
+    #[test]
+    fn url_for_directory_based_post() {
+        const SRC: &str = r#"---
+layout: post
+title: "Hello, World!"
+---
+Hello, world!
+"#;
+        let post = PageSource::from_string(
+            "_posts/2023-01-24-hello-world/index.md",
+            SourceFormat::Markdown,
+            SRC,
+        );
+        assert_eq!(post.url(), "blog/2023/01/24/hello-world/");
     }
 
     #[test]
