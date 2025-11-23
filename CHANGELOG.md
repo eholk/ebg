@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2](https://github.com/eholk/ebg/compare/v0.6.1...v0.6.2) - 2025-11-23
+
+### Other
+
+- Fix test failure by using absolute path in serve tests
+- Address code review comments: use async I/O and improve documentation
+- Add support for directory-based posts with --dir flag
+
 ## [0.6.1](https://github.com/eholk/ebg/compare/v0.6.0...v0.6.1) - 2025-11-22
 
 ### Added
