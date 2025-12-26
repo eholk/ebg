@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'Release tag to build Docker image from'
+        description: "Release tag to build Docker image from"
         required: false
         type: string
 
@@ -21,7 +21,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -55,6 +55,13 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+      - name: Get Rust version from rust-toolchain.toml
+        id: get_rust_version
+        run: |
+          RUST_CHANNEL=$(grep -oP 'channel\s*=\s*"\K[^"]+' rust-toolchain.toml)
+          echo "RUST_CHANNEL=$RUST_CHANNEL" >> $GITHUB_ENV
+          echo "rust_channel=$RUST_CHANNEL" >> $GITHUB_OUTPUT
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
@@ -75,3 +82,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            RUST_VERSION=${{ steps.get_rust_version.outputs.rust_channel }}
+            EBG_VERSION=${{ steps.get_version.outputs.version }}
