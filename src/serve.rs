@@ -6,8 +6,8 @@ use ebg::{
     index::SiteIndex,
 };
 use hyper::{
-    service::{make_service_fn, service_fn},
     Body, Method, Request, Response, Server, StatusCode,
+    service::{make_service_fn, service_fn},
 };
 use miette::IntoDiagnostic;
 use notify::{Event, RecursiveMode, Watcher};
@@ -15,7 +15,7 @@ use thiserror::Error;
 use tokio::runtime::Runtime;
 use tracing::{debug, error, info};
 
-use crate::cli::{build::find_site_root, Command};
+use crate::cli::{Command, build::find_site_root};
 
 #[derive(Args)]
 pub struct ServerOptions {
@@ -59,6 +59,9 @@ pub(crate) async fn serve(options: ServerOptions) -> miette::Result<()> {
     let destination = std::fs::canonicalize(&args.destination).into_diagnostic()?;
 
     let (send, mut recv) = tokio::sync::mpsc::channel(1);
+    // Send a rebuild message to kick off the initial build, once the generator
+    // thread is up and running.
+    send.send(GeneratorMessage::Rebuild).await.unwrap();
 
     let mut watcher = notify::recommended_watcher(move |result: Result<Event, _>| match result {
         Ok(event) => {
@@ -78,7 +81,8 @@ pub(crate) async fn serve(options: ServerOptions) -> miette::Result<()> {
     })
     .into_diagnostic()?;
 
-    let path = std::fs::canonicalize(&find_site_root(&options.build_opts)?).into_diagnostic()?;
+    let path = std::fs::canonicalize(&find_site_root(options.build_opts.path.as_deref())?)
+        .into_diagnostic()?;
     watcher
         .watch(&path, RecursiveMode::Recursive)
         .into_diagnostic()?;
@@ -86,6 +90,11 @@ pub(crate) async fn serve(options: ServerOptions) -> miette::Result<()> {
     // FIXME: Watch for file changes and rebuild the site if it changes.
     let generate = tokio::spawn(async move {
         loop {
+            match recv.recv().await {
+                Some(GeneratorMessage::Rebuild) => (),
+                None => error!("error receiving message"),
+            }
+
             let start = Instant::now();
 
             let site = match SiteIndex::from_directory(&path, options.build_opts.unpublished).await
@@ -106,9 +115,17 @@ pub(crate) async fn serve(options: ServerOptions) -> miette::Result<()> {
             };
 
             // FIXME: share this with the build code
-            let gcx = GeneratorContext::new(&site, &args).unwrap();
+            let gcx = match GeneratorContext::new(&site, &args) {
+                Ok(gcx) => gcx,
+                Err(e) => {
+                    let report = miette::Report::new(e).context("error creating site generator");
+                    error!("{report:?}");
+                    continue;
+                }
+            };
             if let Err(e) = gcx.generate_site(&site).await {
-                error!("failed to generate site: {e}");
+                let report = miette::Report::new(e).context("error generating site");
+                error!("{report:?}");
                 continue;
             }
 
@@ -116,11 +133,6 @@ pub(crate) async fn serve(options: ServerOptions) -> miette::Result<()> {
                 "Generating site took {:.3} seconds",
                 start.elapsed().as_secs_f32()
             );
-
-            match recv.recv().await {
-                Some(GeneratorMessage::Rebuild) => (),
-                None => error!("error receiving message"),
-            }
         }
     });
 
@@ -232,10 +244,10 @@ mod test {
         path::{Path, PathBuf},
     };
 
-    use hyper::{body::to_bytes, Request, StatusCode};
+    use hyper::{Request, StatusCode, body::to_bytes};
     use miette::IntoDiagnostic;
 
-    use crate::serve::{guess_mime_type_from_path, handle_request, ServerError};
+    use crate::serve::{ServerError, guess_mime_type_from_path, handle_request};
 
     #[test]
     fn test_mime_type() {
@@ -244,7 +256,12 @@ mod test {
     }
 
     fn test_site() -> PathBuf {
-        Path::new(".").join("test").join("data").join("html")
+        // Use CARGO_MANIFEST_DIR to get an absolute path to the project root
+        // This ensures the test works regardless of the current working directory
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test")
+            .join("data")
+            .join("html")
     }
 
     /// Make sure we can fetch a file that's known to exist

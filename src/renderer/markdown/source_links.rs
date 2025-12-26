@@ -1,7 +1,7 @@
 use std::fmt::Formatter;
 
 use email_address_parser::EmailAddress;
-use miette::{diagnostic, Diagnostic};
+use miette::{Diagnostic, diagnostic};
 use pulldown_cmark::{CowStr, Event, Tag};
 use thiserror::Error;
 use tracing::debug;
@@ -67,13 +67,21 @@ pub fn adjust_relative_links<'a>(
     markdown
         .into_iter()
         .map(move |event| match event {
-            Event::Start(Tag::Link(link_type, url, title)) => {
-                let url = map_url(&url).unwrap_or_else(|| url.to_string());
-                Event::Start(Tag::Link(link_type, url.into(), title))
-            }
-            Event::End(Tag::Link(link_type, url, title)) => {
-                let url = map_url(&url).unwrap_or_else(|| url.to_string());
-                Event::End(Tag::Link(link_type, url.into(), title))
+            Event::Start(Tag::Link {
+                link_type,
+                dest_url,
+                title,
+                id,
+            }) => {
+                let dest_url = map_url(&dest_url)
+                    .unwrap_or_else(|| dest_url.to_string())
+                    .into();
+                Event::Start(Tag::Link {
+                    link_type,
+                    dest_url,
+                    title,
+                    id,
+                })
             }
             event => event,
         })
@@ -85,18 +93,15 @@ pub enum LinkDest {
     External(Url),
     Local(String),
     /// The link is an email address
-    ///
-    /// The first field contains the parsed email address and the second
-    /// contains the source.
-    Email(EmailAddress, String),
+    Email(String),
 }
 
 impl LinkDest {
     pub fn parse(s: &str) -> Result<Self, LinkDestError> {
         if let Ok(url) = Url::parse(s) {
             Ok(Self::External(url))
-        } else if let Some(email) = EmailAddress::parse(s, None) {
-            Ok(Self::Email(email, s.to_string()))
+        } else if EmailAddress::parse(s, None).is_some() {
+            Ok(Self::Email(s.to_string()))
         } else {
             Ok(Self::Local(s.to_string()))
         }
@@ -108,14 +113,14 @@ impl LinkDest {
 
     pub fn is_local(&self) -> bool {
         match self {
-            Self::External(_) | Self::Email(_, _) => false,
+            Self::External(_) | Self::Email(_) => false,
             Self::Local(_) => true,
         }
     }
 
     pub fn is_relative(&self) -> bool {
         match self {
-            Self::External(_) | Self::Email(_, _) => false,
+            Self::External(_) | Self::Email(_) => false,
             Self::Local(s) => !s.starts_with('/'),
         }
     }
@@ -128,7 +133,7 @@ impl LinkDest {
         match self {
             Self::External(url) => url.fragment(),
             Self::Local(s) => s.rsplit_once('#').map(|(_, f)| f),
-            Self::Email(_, _) => None,
+            Self::Email(_) => None,
         }
     }
 
@@ -143,7 +148,7 @@ impl LinkDest {
                     path
                 }
             }
-            Self::Email(_, source) => &source,
+            Self::Email(source) => &source,
         }
     }
 
@@ -178,7 +183,7 @@ impl std::fmt::Display for LinkDest {
         match self {
             Self::External(url) => write!(f, "{}", url),
             Self::Local(s) => write!(f, "{}", s),
-            Self::Email(_, source) => write!(f, "{}", source),
+            Self::Email(source) => write!(f, "{}", source),
         }
     }
 }

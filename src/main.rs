@@ -1,9 +1,11 @@
 use clap::Parser;
-use cli::{about::AboutOptions, new_post::NewPostOptions, wayback::WaybackOptions};
+use cli::{
+    about::AboutOptions, list::ListOptions, new_post::NewPostOptions, wayback::WaybackOptions,
+};
 use serve::ServerOptions;
 
 use ebg::generator::Options;
-use tracing_subscriber::{prelude::*, EnvFilter};
+use tracing_subscriber::{EnvFilter, prelude::*};
 
 use crate::cli::Command;
 
@@ -24,6 +26,7 @@ enum Commands {
     NewPost(NewPostOptions),
     Serve(ServerOptions),
     Wayback(WaybackOptions),
+    List(ListOptions),
 }
 
 fn main() -> miette::Result<()> {
@@ -37,6 +40,7 @@ fn main() -> miette::Result<()> {
     match args.command {
         Commands::About(cmd) => cmd.run()?,
         Commands::Build(args) => args.run()?,
+        Commands::List(args) => args.run()?,
         Commands::NewPost(options) => options.run()?,
         Commands::Serve(options) => options.run()?,
         Commands::Wayback(options) => options.run()?,

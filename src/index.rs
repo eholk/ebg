@@ -1,9 +1,10 @@
 //! Contains data structures that represent the full site.
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fs::File,
     io::Read,
+    ops::Index,
     path::{Path, PathBuf},
 };
 
@@ -61,10 +62,13 @@ pub enum WaybackFilter {
     ),
 }
 
+#[non_exhaustive]
 #[derive(Diagnostic, Error, Debug)]
 pub enum IndexError {
     #[error("reading directory entry")]
     ReadingDirectoryEntry(#[source] std::io::Error),
+    #[error("reading directory entry")]
+    WalkdirReadingDirectoryEntry(#[source] walkdir::Error),
     #[error("invalid post filename: `{}`", .0.display())]
     InvalidFilename(PathBuf),
     #[error("reading post contents")]
@@ -85,6 +89,7 @@ pub struct SiteIndex {
     root_dir: PathBuf,
     pages: Vec<PageSource>,
     raw_files: Vec<PathBuf>,
+    categories: BTreeMap<String, Category>,
 }
 
 impl SiteIndex {
@@ -122,11 +127,32 @@ impl SiteIndex {
             }
         }
 
+        // Gather all the category information
+        let mut categories = BTreeMap::new();
+        for (id, page) in pages.iter().enumerate() {
+            match page.categories() {
+                Some(page_categories) => {
+                    for category in page_categories {
+                        categories
+                            .entry(category.to_string())
+                            .or_insert_with(|| Category {
+                                name: category.to_string(),
+                                posts: vec![],
+                            })
+                            .posts
+                            .push(PageId(id));
+                    }
+                }
+                None => (),
+            }
+        }
+
         Ok(SiteIndex {
             config,
             root_dir,
             pages,
             raw_files,
+            categories,
         })
     }
 
@@ -170,6 +196,18 @@ impl SiteIndex {
         let snapshot = toml::from_str(&buf)?;
         Ok(Some(snapshot))
     }
+
+    pub fn categories(&self) -> impl Iterator<Item = &Category> {
+        self.categories.values()
+    }
+
+    pub fn find_pages_in_category(&self, category: &str) -> impl Iterator<Item = &PageSource> {
+        self.categories
+            .get(category)
+            .into_iter()
+            .flat_map(|cat| cat.posts.iter())
+            .map(|id| &self.pages[id.0])
+    }
 }
 
 /// Errors that can occur while loading the Wayback snapshot file
@@ -187,6 +225,14 @@ pub enum WaybackError {
         #[from]
         toml::de::Error,
     ),
+}
+
+impl Index<PageId> for SiteIndex {
+    type Output = PageSource;
+
+    fn index(&self, id: PageId) -> &Self::Output {
+        &self.pages[id.0]
+    }
 }
 
 /// Accessor methods for various kinds of site metadata
@@ -272,7 +318,25 @@ async fn load_posts(
     );
     while let Some(entry) = dir_stream.next().await {
         let entry = entry.map_err(IndexError::ReadingDirectoryEntry)?;
-        let page = match PageSource::from_file(entry.path(), root_dir).await {
+        let entry_path = entry.path();
+        let metadata = entry
+            .metadata()
+            .await
+            .map_err(IndexError::ReadingDirectoryEntry)?;
+
+        // Check if this is a directory containing an index.md file
+        let file_to_load = if metadata.is_dir() {
+            let index_file = entry_path.join("index.md");
+            // Use tokio::fs for async check
+            match fs::try_exists(&index_file).await {
+                Ok(true) => index_file,
+                _ => continue, // Skip directories without index.md
+            }
+        } else {
+            entry_path
+        };
+
+        let page = match PageSource::from_file(file_to_load, root_dir).await {
             Ok(page) => page,
             Err(e) if e.severity() <= Some(Severity::Warning) => {
                 println!(
@@ -318,11 +382,11 @@ async fn load_directory(
         }
     }
 
-    let mut walk = async_walkdir::WalkDir::new(path);
-    while let Some(result) = walk.next().await {
-        let entry = result.map_err(IndexError::ReadingDirectoryEntry)?;
+    let walk = walkdir::WalkDir::new(path);
+    for result in walk {
+        let entry = result.map_err(IndexError::WalkdirReadingDirectoryEntry)?;
 
-        if !entry.file_type().await.unwrap().is_file() {
+        if !entry.file_type().is_file() {
             continue;
         }
 
@@ -332,11 +396,35 @@ async fn load_directory(
                 pages.push(page)
             }
         } else {
-            raw_files.push(filename)
+            raw_files.push(filename.to_path_buf())
         }
     }
 
     Ok((pages, raw_files))
+}
+
+pub struct PageId(usize);
+
+pub struct Category {
+    pub(crate) name: String,
+    posts: Vec<PageId>,
+}
+
+impl Category {
+    /// Generate the slug for this category
+    pub fn slug(&self) -> String {
+        slug::slugify(&self.name)
+    }
+
+    /// Generate a relative URL path for this category (e.g., "/blog/category/tech/")
+    pub fn url_path(&self) -> String {
+        format!("/blog/category/{}/", self.slug())
+    }
+
+    /// Generate a full URL for this category with the given base URL (e.g., "https://example.com/blog/category/tech/")
+    pub fn full_url(&self, base_url: &str) -> String {
+        format!("{}/blog/category/{}/", base_url, self.slug())
+    }
 }
 
 #[cfg(test)]

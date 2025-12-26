@@ -1,0 +1,154 @@
+name: Release-plz
+
+permissions:
+  pull-requests: write
+  contents: write
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+
+  # Release unpublished packages.
+  release-plz-release:
+    name: Release-plz release
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'eholk' }}
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run release-plz
+        id: release-plz
+        uses: release-plz/action@v0.5
+        with:
+          command: release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      
+      - name: Trigger Docker release workflow
+        if: ${{ steps.release-plz.conclusion == 'success' }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            console.log('Release-plz created releases. Triggering Docker release workflow...');
+            
+            // Get the latest release to find the tag
+            let releaseTag = null;
+            try {
+              const latestRelease = await github.rest.repos.getLatestRelease({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+              });
+              releaseTag = latestRelease.data.tag_name;
+              console.log('Found latest release tag:', releaseTag);
+            } catch (error) {
+              console.error('Failed to get latest release:', error);
+              throw new Error('Could not retrieve release tag - failing workflow to prevent building from wrong ref');
+            }
+            
+            try {
+              const response = await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: 'docker-release.yml',
+                ref: 'main',
+                inputs: {
+                  release_tag: releaseTag
+                }
+              });
+              console.log('Successfully triggered Docker release workflow with tag:', releaseTag);
+              console.log('Response status:', response.status);
+            } catch (error) {
+              console.error('Failed to trigger Docker release workflow:', error);
+              throw error;
+            }
+
+  # Create a PR with the new versions and changelog, preparing the next release.
+  release-plz-pr:
+    name: Release-plz PR
+    runs-on: ubuntu-latest
+    if: ${{ github.repository_owner == 'eholk' }}
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: release-plz-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run release-plz
+        id: release-plz
+        uses: release-plz/action@v0.5
+        with:
+          command: release-pr
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+      
+      # New steps to update Dockerfile in the version bump PR
+      - name: Update Dockerfile with new versions from PR branch
+        if: ${{ fromJson(steps.release-plz.outputs.pr).head_branch != '' }}
+        id: update_dockerfile
+        run: |
+          # Get the PR branch name from release-plz output
+          PR_BRANCH="${{ fromJson(steps.release-plz.outputs.pr).head_branch }}"
+          echo "Using PR branch from release-plz output: $PR_BRANCH"
+          
+          # Fetch the remote branch
+          git fetch origin "$PR_BRANCH"
+          
+          # Checkout the PR branch
+          git checkout "$PR_BRANCH"
+          
+          # Now extract new version from Cargo.toml in the PR branch
+          NEW_VERSION=$(grep -m 1 '^version = ' Cargo.toml | sed 's/^version = "\(.*\)"$/\1/')
+          echo "Extracted EBG version: $NEW_VERSION"
+          
+          # Extract Rust version from rust-toolchain.toml
+          RUST_CHANNEL=$(grep -oP 'channel\s*=\s*"\K[^"]+' rust-toolchain.toml)
+          echo "Extracted Rust channel: $RUST_CHANNEL"
+          
+          # Create a new Dockerfile with updated version info
+          echo "FROM rust:$RUST_CHANNEL" > Dockerfile.new
+          echo "" >> Dockerfile.new
+          echo "# Run rustup update so we pick up the toolchain version in rust-toolchain.toml" >> Dockerfile.new
+          echo "RUN cargo install ebg --version $NEW_VERSION" >> Dockerfile.new
+          
+          # Replace the original Dockerfile
+          mv Dockerfile.new Dockerfile
+          
+          # Show the updated Dockerfile
+          echo "Updated Dockerfile:"
+          cat Dockerfile
+          
+          # Save the version for the next step
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+      
+      - name: Commit updated Dockerfile to release PR branch
+        if: ${{ fromJson(steps.release-plz.outputs.pr).head_branch != '' }}
+        run: |
+          # We're already on the PR branch from the previous step
+          
+          # Commit and push changes
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add Dockerfile
+          git commit -m "Update Dockerfile for version ${NEW_VERSION}"
+          git push origin HEAD
+          echo "Updated Dockerfile in PR branch"

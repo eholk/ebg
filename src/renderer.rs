@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::{
     diagnostics::{DiagnosticContext, ErrorSet},
-    index::{PageMetadata, PageSource, SiteIndex, SiteMetadata, SourceFormat},
+    index::{Category, PageMetadata, PageSource, SiteIndex, SiteMetadata, SourceFormat},
 };
 
 use self::markdown::render_markdown;
@@ -37,6 +37,19 @@ impl<'a> RenderedSite<'a> {
             .zip(self.all_pages())
             .filter(|(page, _)| page.is_post())
             .map(|(_, page)| page)
+    }
+
+    pub fn categories_and_pages(
+        &self,
+    ) -> impl Iterator<Item = (&Category, impl Iterator<Item = RenderedPageRef<'_>>)> {
+        self.source.categories().map(|category| {
+            let pages = self.all_pages().filter(|page| {
+                page.source
+                    .categories()
+                    .map_or(false, |mut c| c.any(|cat| cat == category.name))
+            });
+            (category, pages)
+        })
     }
 }
 
@@ -79,7 +92,7 @@ impl<'a> SiteMetadata for RenderedSite<'a> {
 }
 
 impl SiteIndex {
-    pub fn render(&self) -> Result<RenderedSite, RenderError> {
+    pub fn render(&self) -> Result<RenderedSite<'_>, RenderError> {
         let code_formatter = CodeFormatter::new();
         let pages = RenderContext::run_dcx(&self, &code_formatter, |ctx| {
             self.all_pages()
@@ -98,8 +111,8 @@ impl SiteIndex {
 
 #[derive(Clone, Copy)]
 pub struct RenderedPageRef<'a> {
-    source: &'a PageSource,
-    page: &'a RenderedPage,
+    pub(crate) source: &'a PageSource,
+    pub(crate) page: &'a RenderedPage,
 }
 
 impl<'a> RenderedPageRef<'a> {
@@ -254,7 +267,7 @@ mod test {
 
     use crate::{
         index::{PageSource, SiteIndex, SourceFormat},
-        renderer::{markdown::CodeFormatter, RenderContext, RenderSource},
+        renderer::{RenderContext, RenderSource, markdown::CodeFormatter},
     };
 
     #[test]
