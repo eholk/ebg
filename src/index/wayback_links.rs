@@ -6,6 +6,7 @@
 //! corresponding wayback URLs.
 
 use chrono::{DateTime, Utc};
+use miette::Diagnostic;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use thiserror::Error;
@@ -82,7 +83,7 @@ impl WaybackLinks {
     }
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum WaybackLinksError {
     #[error("failed to read wayback links file {0}")]
     ReadFile(std::path::PathBuf, #[source] std::io::Error),
