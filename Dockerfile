@@ -12,5 +12,5 @@ ARG EBG_VERSION=latest
 RUN if [ "$EBG_VERSION" = "latest" ]; then \
     cargo install ebg; \
     else \
-    cargo install ebg --version $EBG_VERSION; \
+    cargo install ebg --version "$EBG_VERSION"; \
     fi
