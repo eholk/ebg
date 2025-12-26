@@ -39,7 +39,7 @@ impl Command for WaybackOptions {
                     status = wayback.job_status(&job).await?;
                 }
 
-                println!("Job result: {:?}", status);
+                println!("Job result: {:#?}", status);
 
                 Ok(())
             })

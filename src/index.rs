@@ -8,7 +8,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use clap::error;
 use futures::StreamExt;
 use miette::{Diagnostic, Severity};
 use serde::Deserialize;
@@ -17,10 +16,12 @@ use tokio::fs;
 use tokio_stream::wrappers::ReadDirStream;
 
 mod page;
+mod wayback_links;
 
 pub use page::{PageKind, PageMetadata, PageSource, SourceFormat};
+pub use wayback_links::{WaybackLink, WaybackLinks, WaybackLinksError};
 
-use crate::wayback::{self, Snapshot};
+use crate::wayback::Snapshot;
 
 use self::page::PageLoadError;
 
