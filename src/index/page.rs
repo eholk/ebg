@@ -8,14 +8,17 @@ use std::{
 
 use chrono::{DateTime, Datelike, Local, TimeZone, Utc};
 use miette::Diagnostic;
+use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde::Deserialize;
 use thiserror::Error;
 use tokio::fs::read_to_string;
 use tracing::debug;
+use url::Url;
 
 use self::parsing_helpers::{
     deserialize_comma_separated_list, deserialize_date_opt, find_frontmatter_delimiter,
 };
+use super::LinkDest;
 
 pub(crate) mod parsing_helpers;
 
@@ -213,6 +216,35 @@ impl PageSource {
         self.frontmatter()
             .map(|front| front.show_in_home)
             .unwrap_or(true)
+    }
+
+    /// Extracts external links from the page's markdown content.
+    ///
+    /// This parses the markdown and returns all links that appear to be
+    /// external URLs (not relative paths, fragments, or email addresses).
+    pub fn external_links(&self) -> impl Iterator<Item = Url> {
+        let mut links = Vec::new();
+
+        // Only process markdown content
+        if self.format != SourceFormat::Markdown {
+            return links.into_iter();
+        }
+
+        let markdown = self.mainmatter();
+        let parser = Parser::new_ext(markdown, Options::all());
+
+        for event in parser {
+            if let Event::Start(Tag::Link { dest_url, .. }) = event {
+                // Parse the link to classify it - only include external http/https URLs
+                if let Ok(LinkDest::External(url)) = LinkDest::parse(dest_url.as_ref()) {
+                    if url.scheme() == "http" || url.scheme() == "https" {
+                        links.push(url);
+                    }
+                }
+            }
+        }
+
+        links.into_iter()
     }
 }
 
@@ -682,5 +714,39 @@ tags: tag1, tag2
         println!("frontmatter: {front:#?}");
         assert_eq!(front.tags, vec!["tag1".to_string(), "tag2".to_string()]);
         Ok(())
+    }
+
+    #[test]
+    fn test_external_links() {
+        const SRC: &str = r#"---
+layout: post
+title: "Test Post"
+---
+
+# Test Post
+
+Check out [Rust](https://www.rust-lang.org/) and [Wikipedia](https://en.wikipedia.org/wiki/Rust).
+
+Also see [this local page](/about/) and [another post](../other-post.md).
+
+Email me at [me@example.com](mailto:me@example.com).
+
+Jump to [the section](#section).
+"#;
+        let post =
+            PageSource::from_string("_posts/2023-01-24-test.md", SourceFormat::Markdown, SRC);
+
+        let links = post.external_links().collect::<Vec<_>>();
+        assert_eq!(links.len(), 2);
+        assert!(
+            links
+                .iter()
+                .any(|u| u.as_str() == "https://www.rust-lang.org/")
+        );
+        assert!(
+            links
+                .iter()
+                .any(|u| u.as_str() == "https://en.wikipedia.org/wiki/Rust")
+        );
     }
 }

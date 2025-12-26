@@ -15,9 +15,11 @@ use thiserror::Error;
 use tokio::fs;
 use tokio_stream::wrappers::ReadDirStream;
 
+mod links;
 mod page;
 mod wayback_links;
 
+pub use links::{LinkDest, LinkDestError};
 pub use page::{PageKind, PageMetadata, PageSource, SourceFormat};
 pub use wayback_links::{WaybackLink, WaybackLinks, WaybackLinksError};
 
