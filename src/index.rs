@@ -52,8 +52,26 @@ pub struct Config {
 
 #[derive(Deserialize, Default)]
 pub struct WaybackConfig {
-    snapshots: PathBuf,
-    exclude: Vec<WaybackFilter>,
+    pub snapshots: PathBuf,
+    pub exclude: Vec<WaybackFilter>,
+}
+
+impl WaybackConfig {
+    /// Checks if a post should be excluded from wayback archiving based on filters.
+    pub fn should_exclude_post(&self, post: &PageSource) -> bool {
+        for filter in &self.exclude {
+            match filter {
+                WaybackFilter::Before(date) => {
+                    if let Some(post_date) = post.publish_date() {
+                        if post_date < *date {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
 }
 
 #[derive(Deserialize, PartialEq, Debug)]
@@ -157,6 +175,10 @@ impl SiteIndex {
             raw_files,
             categories,
         })
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 
     pub fn posts(&self) -> impl Iterator<Item = &PageSource> {

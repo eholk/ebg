@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use ebg::index::{SiteIndex, WaybackLinks};
+use ebg::index::{SiteIndex, WaybackFilter, WaybackLinks};
 
 use super::Command;
 
@@ -44,14 +44,41 @@ impl Command for UpdateLinksOptions {
                 // Load the site index
                 let site = SiteIndex::from_directory(&self.root, true).await?;
 
+                // Show active filters
+                if let Some(wayback_cfg) = site.config().wayback.as_ref() {
+                    if !wayback_cfg.exclude.is_empty() {
+                        println!("\n📋 Active filters:");
+                        for filter in &wayback_cfg.exclude {
+                            match filter {
+                                WaybackFilter::Before(date) => {
+                                    println!("   • Excluding posts before {}", date.format("%Y-%m-%d"));
+                                }
+                            }
+                        }
+                        println!();
+                    }
+                }
+
                 let mut total_posts = 0;
                 let mut total_links = 0;
                 let mut already_archived = 0;
                 let mut needs_archiving = 0;
+                let mut filtered_posts = 0;
+
+                // Get wayback config for filtering
+                let wayback_config = site.config().wayback.as_ref();
 
                 // Iterate through all posts
                 for post in site.posts() {
                     total_posts += 1;
+
+                    // Check if post should be excluded by filters
+                    if let Some(config) = wayback_config {
+                        if config.should_exclude_post(post) {
+                            filtered_posts += 1;
+                            continue;
+                        }
+                    }
 
                     // Extract external links from the post
                     let external_links: Vec<_> = post.external_links().collect();
@@ -111,6 +138,9 @@ impl Command for UpdateLinksOptions {
                 println!("\n{}", "=".repeat(60));
                 println!("Summary:");
                 println!("  Posts scanned: {}", total_posts);
+                if filtered_posts > 0 {
+                    println!("  🚫 Filtered by config: {}", filtered_posts);
+                }
                 println!("  Total external links: {}", total_links);
                 println!("  ✅ Already archived: {}", already_archived);
                 println!("  📦 Need archiving: {}", needs_archiving);
