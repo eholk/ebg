@@ -82,36 +82,62 @@ The `WaybackConfig::should_exclude_post()` method checks if a post matches exclu
 - Shows active filters in command output
 - Tracks and reports filtered post count
 
-### 🔜 Phase 4: API Integration (NEXT)
-- Get Wayback credentials from environment variables
+### ✅ Phase 4: API Integration (COMPLETE)
+- Reads Wayback credentials from environment variables (`WAYBACK_ACCESS_KEY`, `WAYBACK_SECRET_KEY`)
 - For each link needing archiving:
-  - Call `wayback.begin_save_page()`
-  - Poll `wayback.job_status()` until complete
-  - Extract wayback URL from successful response
-  - Add to `WaybackLinks` and save to `.wayback.toml`
-- Handle rate limiting and errors gracefully
-- Progress indicators for long-running operations
+  - Calls `wayback.begin_save_page()` to start the job
+  - Polls `wayback.job_status()` every 2 seconds until complete
+  - Extracts wayback URL from successful response using timestamp
+  - Adds to `WaybackLinks` and saves to `.wayback.toml` incrementally
+- Handles rate limiting with configurable delay (default 1 second between requests)
+- Shows progress indicators with emoji and detailed status
+- Continues processing even if individual links fail
+- Supports `--dry-run` flag to preview without archiving
+- Supports `--delay` flag to customize rate limiting
 
 ### 🔜 Phase 5: Rendering Integration (FUTURE)
 - Modify HTML renderer to add archive indicators
 - Add little icon or "(archived)" link next to external links
 - Make indicator style configurable
 
+## Usage
+
+**Set up credentials** (obtain from https://archive.org/account/s3.php):
+```bash
+export WAYBACK_ACCESS_KEY="your-access-key"
+export WAYBACK_SECRET_KEY="your-secret-key"
+```
+
+**Dry run** (see what would be archived):
+```bash
+ebg wayback update-links --dry-run ../blog
+```
+
+**Actually archive links**:
+```bash
+ebg wayback update-links ../blog
+```
+
+**Customize rate limiting**:
+```bash
+ebg wayback update-links --delay 2 ../blog  # 2 seconds between requests
+```
+
 ## Testing
 
 **Test Philosophy**:
 - Unit tests for data structures and parsing
-- Integration via CLI command on real blog
-- Test blog has 75 posts, 355 external links
-- Current filter excludes posts before 2025-12-01 (leaves 1 post)
+- No integration tests with real API (avoid external dependencies)
+- Integration testing via CLI command on real blog
 
 **Running Tests**:
 ```bash
 cargo test --lib                    # Run all library tests
 cargo build --bin ebg               # Build CLI
-target/debug/ebg wayback update-links ../blog  # Test on real blog
-```
+ebg wayback update-links --dry-run ../blog  # Dry run test on real blog
+```</invoke>
 
+<old_text line=145>
 ## Key Files
 
 - `ebg/src/index/wayback_links.rs` - Per-post wayback config data structures
@@ -136,8 +162,8 @@ The Wayback API requires credentials:
 
 ### API Rate Limits
 - Be respectful of Wayback Machine API limits
-- Add delays between requests if needed
-- Handle "already archived recently" responses gracefully
+- Configurable via `--delay` flag (default 1 second between requests)
+- Implementation polls job status every 2 seconds
 
 ### Error Handling
 - Use `miette` for error types (derive `Diagnostic`)
@@ -161,15 +187,3 @@ The Wayback API requires credentials:
 - `miette`, `thiserror` - Error handling
 - `clap` - CLI parsing
 - `tempfile` - Test utilities (dev dependency)
-
-## Next Session Start Here
-
-Phase 4 implementation: Integrate the Wayback Machine API to actually archive links and save the results to `.wayback.toml` files.
-
-Key considerations:
-1. Read credentials from environment variables
-2. Handle job polling - API is async, jobs take seconds to complete
-3. Parse the timestamp from successful responses to build wayback URLs
-4. Save updated WaybackLinks to file after each successful archive
-5. Handle errors gracefully - don't fail entire run if one link fails
-6. Consider batching or rate limiting for many links

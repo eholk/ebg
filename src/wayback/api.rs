@@ -121,6 +121,42 @@ impl Status {
     pub fn status(&self) -> &str {
         self.status.as_ref()
     }
+
+    /// Returns true if the job is complete (success or error).
+    pub fn is_complete(&self) -> bool {
+        self.status != "pending"
+    }
+
+    /// Returns true if the job completed successfully.
+    pub fn is_success(&self) -> bool {
+        self.status == "success"
+    }
+
+    /// Builds the wayback URL for this archived page.
+    ///
+    /// Returns None if the job hasn't completed successfully yet.
+    pub fn wayback_url(&self) -> Option<Url> {
+        if !self.is_success() {
+            return None;
+        }
+
+        let timestamp = self.timestamp.as_ref()?;
+        let original_url = self.original_url.as_ref()?;
+
+        // Build URL: https://web.archive.org/web/{timestamp}/{original_url}
+        let wayback_str = format!("https://web.archive.org/web/{}/{}", timestamp, original_url);
+        Url::parse(&wayback_str).ok()
+    }
+
+    /// Returns the timestamp of the archive, if available.
+    pub fn timestamp(&self) -> Option<&str> {
+        self.timestamp.as_deref()
+    }
+
+    /// Returns the original URL that was archived.
+    pub fn original_url(&self) -> Option<&Url> {
+        self.original_url.as_ref()
+    }
 }
 
 #[cfg(test)]
@@ -154,6 +190,36 @@ mod test {
         let raw_json = r#"{"counters":{"embeds":8,"outlinks":47},"delay_wb_availability":true,"duration_sec":12.72,"http_status":200,"job_id":"spn2-c093004522eaa435107c0d9ee8aac46a17199841","original_url":"https://theincredibleholk.org/","outlinks":["https://github.com/eholk","https://mastodon.social/@theincredibleholk","https://theincredibleholk.org/blog/2023/07/11/how-to-elect-rust-project-directors/","https://theincredibleholk.org/blog/2023/01/25/hello-from-erics-blog-generator/","https://rust-lang.zulipchat.com/#narrow/stream/213817-t-lang/topic/Where.20to.20talk.20about.20.60try.20.7B.7D.60.2C.20.60yeet.60.2C.20etc.3F","https://theincredibleholk.org/blog/2023/11/08/cancellation-async-state-machines/","https://theincredibleholk.org/office-hours/","https://ryanlevick.com/","https://smallcultfollowing.com/babysteps/blog/2023/02/01/async-trait-send-bounds-part-1-intro/","https://github.com/rust-lang/rust/pull/118457","https://veykril.github.io/about/","https://github.com/eholk/ebg","https://theincredibleholk.org/blog/2023/06/20/rust-leadership-council/","https://theincredibleholk.org/blog/2023/12/15/rethinking-rusts-function-declaration-syntax/","https://theincredibleholk.org/blog/2023/06/23/an-exercise-on-culture/","https://theincredibleholk.org/atom.xml","https://yaah.dev/","https://github.com/rust-lang/rust/pull/118420","https://theincredibleholk.org/about/","https://github.com/rust-lang/wg-async/issues/297","https://www.prdaily.com/how-microsoft-manages-culture-change/","https://theincredibleholk.org/blog/2023/11/14/a-mechanism-for-async-cancellation/","https://theincredibleholk.org/blog/2023/02/16/lightweight-predictable-async-send-bounds/","https://theincredibleholk.org/blog/2023/01/24/who-makes-the-boxes/","http://www.apache.org/licenses/LICENSE-2.0","https://smallcultfollowing.com/babysteps/blog/2023/02/13/return-type-notation-send-bounds-part-2/","https://github.com/orgs/rust-lang/projects/28/views/1","https://theincredibleholk.org/blog/2023/02/13/inferred-async-send-bounds/","https://doc.rust-lang.org/std/ops/trait.Try.html#impl-Try-for-Option%3CT%3E","http://creativecommons.org/licenses/by-nc/4.0/","https://theincredibleholk.org/blog/archives/","https://theincredibleholk.org/papers/"],"resources":["https://theincredibleholk.org/","https://theincredibleholk.org/assets/main.css","https://theincredibleholk.org/images/cc-by-nc-4.0-88x31.png","https://theincredibleholk.org/assets/fonts/BerkeleyMono-Bold.woff2","https://theincredibleholk.org/assets/fonts/BerkeleyMono-Regular.woff2","https://theincredibleholk.org/assets/fonts/D-DIN.otf","https://theincredibleholk.org/assets/fonts/BerkeleyMono-Italic.woff2","https://theincredibleholk.org/assets/fonts/D-DIN-Italic.otf"],"status":"success","timestamp":"20240104034229"}"#;
 
         serde_json::from_str::<super::Status>(raw_json).into_diagnostic()?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn status_helper_methods() -> miette::Result<()> {
+        let raw_json = r#"{"counters":{"embeds":8,"outlinks":47},"delay_wb_availability":true,"duration_sec":12.72,"http_status":200,"job_id":"spn2-test","original_url":"https://example.com/","status":"success","timestamp":"20240104034229"}"#;
+        let status: super::Status = serde_json::from_str(raw_json).into_diagnostic()?;
+
+        assert!(status.is_complete());
+        assert!(status.is_success());
+        assert_eq!(status.timestamp(), Some("20240104034229"));
+
+        let wayback_url = status.wayback_url().expect("should have wayback URL");
+        assert_eq!(
+            wayback_url.as_str(),
+            "https://web.archive.org/web/20240104034229/https://example.com/"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn status_pending() -> miette::Result<()> {
+        let raw_json = r#"{"job_id":"spn2-test","status":"pending"}"#;
+        let status: super::Status = serde_json::from_str(raw_json).into_diagnostic()?;
+
+        assert!(!status.is_complete());
+        assert!(!status.is_success());
+        assert!(status.wayback_url().is_none());
 
         Ok(())
     }
