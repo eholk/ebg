@@ -358,6 +358,14 @@ async fn load_posts(
                 _ => continue, // Skip directories without index.md
             }
         } else {
+            // Skip .wayback.toml files - they're metadata, not posts
+            if entry_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map_or(false, |s| s.ends_with(".wayback.toml"))
+            {
+                continue;
+            }
             entry_path
         };
 
