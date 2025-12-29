@@ -49,13 +49,13 @@ pub fn add_wayback_indicators<'a>(
                                 dest_url: CowStr::from(wayback_link.wayback_url.to_string()),
                                 title: CowStr::from(format!(
                                     "View archived version from {}",
-                                    wayback_link.archived_at.format("%Y-%m-%d")
+                                    wayback_link.archived_at.format("%d %B %Y")
                                 )),
                                 id: CowStr::from(""),
                             }));
-                            output.push(Event::Html("<span class=\"wayback-indicator\">".into()));
-                            output.push(Event::Text("📦".into()));
-                            output.push(Event::Html("</span>".into()));
+                            output.push(Event::Html(
+                                "<span class=\"wayback-indicator\"></span>".into(),
+                            ));
                             output.push(Event::End(TagEnd::Link));
                         }
                     }
