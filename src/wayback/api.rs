@@ -82,7 +82,7 @@ impl Wayback {
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum Error {
-    #[error("HTTP error")]
+    #[error("HTTP error while communicating with Wayback Machine Save Page Now API")]
     HttpError(
         #[from]
         #[source]
