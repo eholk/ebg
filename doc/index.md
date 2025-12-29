@@ -67,6 +67,6 @@ See [Themes](themes.md).
 ## Wayback Machine
 
 EBG has the ability to automatically archive any external links to the Internet Archive's Wayback Machine.
-The site will then includes links to both the original location and the archived copy.
+The site will then include links to both the original location and the archived copy.
 
 For more information, see our documentation on the [Wayback feature](wayback.md).
