@@ -11,7 +11,7 @@ use miette::Diagnostic;
 use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde::Deserialize;
 use thiserror::Error;
-use tokio::fs::read_to_string;
+use tokio::fs::{self, read_to_string};
 use tracing::debug;
 use url::Url;
 
@@ -90,6 +90,7 @@ pub struct PageSource {
     frontmatter: Option<Range<usize>>,
     mainmatter: RangeFrom<usize>,
     parsed_frontmatter: Option<FrontMatter>,
+    wayback_links: Option<super::WaybackLinks>,
 }
 
 impl PageSource {
@@ -108,11 +109,32 @@ impl PageSource {
         let contents = read_to_string(&filename)
             .await
             .map_err(PageLoadError::ReadingPostContents)?;
-        Ok(Self::from_string(
+
+        // Try to load wayback links if they exist
+        let wayback_path = if filename.ends_with("index.md") {
+            // Directory-based post: _posts/2023-01-25-hello/index.md -> _posts/2023-01-25-hello/wayback.toml
+            filename.parent().unwrap().join("wayback.toml")
+        } else {
+            // Single-file post: _posts/2023-01-25-hello.md -> _posts/2023-01-25-hello.wayback.toml
+            filename.with_file_name(format!(
+                "{}.wayback.toml",
+                filename.file_stem().unwrap().to_string_lossy()
+            ))
+        };
+
+        let wayback_links = if fs::try_exists(&wayback_path).await.unwrap_or(false) {
+            super::WaybackLinks::from_file(&wayback_path).ok()
+        } else {
+            None
+        };
+
+        let mut page = Self::from_string(
             pathdiff::diff_paths(filename, root_dir).unwrap(),
             kind,
             contents,
-        ))
+        );
+        page.wayback_links = wayback_links;
+        Ok(page)
     }
 
     pub fn from_string(
@@ -155,6 +177,7 @@ impl PageSource {
             frontmatter,
             mainmatter,
             parsed_frontmatter,
+            wayback_links: None,
         }
     }
 
@@ -245,6 +268,11 @@ impl PageSource {
         }
 
         links.into_iter()
+    }
+
+    /// Returns the wayback links for this page, if any exist.
+    pub fn wayback_links(&self) -> Option<&super::WaybackLinks> {
+        self.wayback_links.as_ref()
     }
 }
 
