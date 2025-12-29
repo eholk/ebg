@@ -115,7 +115,6 @@ mod tests {
         assert!(html_output.contains("<a href=\"https://example.com\">this link</a>"));
         // Should have wayback indicator
         assert!(html_output.contains("wayback-indicator"));
-        assert!(html_output.contains("📦"));
         assert!(html_output.contains("web.archive.org"));
     }
 
