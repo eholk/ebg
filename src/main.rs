@@ -23,10 +23,10 @@ struct Cli {
 enum Commands {
     About(AboutOptions),
     Build(Options),
+    List(ListOptions),
     NewPost(NewPostOptions),
     Serve(ServerOptions),
     Wayback(WaybackOptions),
-    List(ListOptions),
 }
 
 fn main() -> miette::Result<()> {
