@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0](https://github.com/eholk/ebg/compare/v0.6.2...v0.7.0) - 2026-01-02
+
+### Other
+
+- Remove semver check since release-plz handles that now
+- Update src/renderer/markdown/wayback_indicators.rs
+- Update src/wayback/api.rs
+- Update doc/index.md
+- Minor styling fixes
+- Add default wayback link decorations
+- Skip wayback files when loading posts
+- Add Wayback API calls to actually archive external links
+- Add AGENTS.md file to help
+- Add filters
+- Add wayback CLI skeleton
+- Add link extraction for wayback machine
+- Add wayback metadata reading and saving
+- Merge branch 'main' into wayback
+
 ## [0.6.2](https://github.com/eholk/ebg/compare/v0.6.1...v0.6.2) - 2025-12-26
 
 ### Other
