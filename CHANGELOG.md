@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2](https://github.com/eholk/ebg/compare/v0.6.1...v0.6.2) - 2025-12-26
+
+### Other
+
+- Apply code review suggestion
+- Do a better job of automatically updating Dockerfile
+- *(deps)* bump tera from 1.20.0 to 1.20.1
+- *(deps)* bump tracing-subscriber from 0.3.20 to 0.3.22
+- *(deps)* bump syntect from 5.2.0 to 5.3.0
+- *(deps)* bump open from 5.3.2 to 5.3.3
+- *(deps)* bump clap from 4.5.51 to 4.5.53
+- Fix test failure by using absolute path in serve tests
+- Address code review comments: use async I/O and improve documentation
+- Add support for directory-based posts with --dir flag
+
 ## [0.6.1](https://github.com/eholk/ebg/compare/v0.6.0...v0.6.1) - 2025-11-22
 
 ### Added
