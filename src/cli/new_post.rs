@@ -94,8 +94,8 @@ mod test {
     use std::sync::Mutex;
     use tempfile::TempDir;
 
-    use super::NewPostOptions;
     use super::super::Command;
+    use super::NewPostOptions;
 
     // Mutex to ensure tests that change current directory don't run in parallel
     static TEST_MUTEX: Mutex<()> = Mutex::new(());
@@ -134,15 +134,15 @@ mod test {
         let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().unwrap();
-        
+
         // Use a closure to ensure we always restore the directory
         let result = (|| {
             // Change to temp directory
             std::env::set_current_dir(temp_dir.path()).unwrap();
-            
+
             // Create Site.toml
             fs::write("Site.toml", "title = \"Test Site\"\n").unwrap();
-            
+
             // Create a new post
             let cmd = NewPostOptions {
                 title: "Test Post".to_string(),
@@ -150,20 +150,20 @@ mod test {
                 date: Some(NaiveDate::from_ymd_opt(2025, 11, 22).unwrap()),
                 dir: false,
             };
-            
+
             cmd.run().unwrap();
-            
+
             // Check that the post file was created
             let post_path = temp_dir.path().join("_posts/2025-11-22-test-post.md");
             assert!(post_path.exists());
-            
+
             // Check the content
             let content = fs::read_to_string(&post_path).unwrap();
             assert!(content.contains("# Test Post"));
             assert!(content.contains("layout: post"));
             assert!(content.contains("published: false"));
         })();
-        
+
         // Always restore original directory, even if test panics
         std::env::set_current_dir(original_dir).unwrap();
         result
@@ -174,15 +174,15 @@ mod test {
         let _lock = TEST_MUTEX.lock().unwrap();
         let temp_dir = TempDir::new().unwrap();
         let original_dir = std::env::current_dir().unwrap();
-        
+
         // Use a closure to ensure we always restore the directory
         let result = (|| {
             // Change to temp directory
             std::env::set_current_dir(temp_dir.path()).unwrap();
-            
+
             // Create Site.toml
             fs::write("Site.toml", "title = \"Test Site\"\n").unwrap();
-            
+
             // Create a new post with directory structure
             let cmd = NewPostOptions {
                 title: "Test Directory Post".to_string(),
@@ -190,25 +190,27 @@ mod test {
                 date: Some(NaiveDate::from_ymd_opt(2025, 11, 22).unwrap()),
                 dir: true,
             };
-            
+
             cmd.run().unwrap();
-            
+
             // Check that the directory was created
-            let post_dir = temp_dir.path().join("_posts/2025-11-22-test-directory-post");
+            let post_dir = temp_dir
+                .path()
+                .join("_posts/2025-11-22-test-directory-post");
             assert!(post_dir.exists());
             assert!(post_dir.is_dir());
-            
+
             // Check that index.md was created
             let index_path = post_dir.join("index.md");
             assert!(index_path.exists());
-            
+
             // Check the content
             let content = fs::read_to_string(&index_path).unwrap();
             assert!(content.contains("# Test Directory Post"));
             assert!(content.contains("layout: post"));
             assert!(content.contains("published: false"));
         })();
-        
+
         // Always restore original directory, even if test panics
         std::env::set_current_dir(original_dir).unwrap();
         result

@@ -11,11 +11,11 @@
 
 use std::io::Write;
 
+use miette::Diagnostic;
 use quick_xml::{
     Writer,
     events::{BytesDecl, BytesText, Event::*},
 };
-use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::{
@@ -75,36 +75,34 @@ pub(crate) fn generate_sitemap(
                         writer
                             .create_element("loc")
                             .write_text_content(BytesText::new(&page_url))?;
-                        
+
                         // Add last modification date if available (for posts)
                         if let Some(publish_date) = page.publish_date() {
                             writer
                                 .create_element("lastmod")
-                                .write_text_content(BytesText::new(&publish_date.format("%Y-%m-%d").to_string()))?;
+                                .write_text_content(BytesText::new(
+                                    &publish_date.format("%Y-%m-%d").to_string(),
+                                ))?;
                         }
-                        
+
                         // Set change frequency based on whether it's a post or regular page
                         let changefreq = if page.source.is_post() {
                             "monthly"
                         } else {
                             "yearly"
                         };
-                        
+
                         writer
                             .create_element("changefreq")
                             .write_text_content(BytesText::new(changefreq))?;
-                        
+
                         // Set priority - posts get higher priority than regular pages
-                        let priority = if page.source.is_post() {
-                            "0.8"
-                        } else {
-                            "0.6"
-                        };
-                        
+                        let priority = if page.source.is_post() { "0.8" } else { "0.6" };
+
                         writer
                             .create_element("priority")
                             .write_text_content(BytesText::new(priority))?;
-                        
+
                         Ok(())
                     },
                 )?;
@@ -113,7 +111,7 @@ pub(crate) fn generate_sitemap(
             // Add category pages if they exist
             for (category, _) in site.categories_and_pages() {
                 let category_url = category.full_url(site.base_url());
-                
+
                 writer.create_element("url").write_inner_content(
                     |writer: &mut Writer<_>| -> Result<(), _> {
                         writer
@@ -139,22 +137,20 @@ pub(crate) fn generate_sitemap(
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{
-        index::{PageSource, SiteIndex, SourceFormat},
-    };
+    use crate::index::{PageSource, SiteIndex, SourceFormat};
 
     #[test]
     fn test_generate_sitemap_structure() -> std::result::Result<(), SitemapError> {
         // Create a simple site with default config (empty base URL)
         let mut site_index = SiteIndex::default();
-        
+
         // Add a blog post
         site_index.add_page(PageSource::from_string(
             "_posts/2023-01-01-test-post.md",
             SourceFormat::Markdown,
             "---\ntitle: Test Post\ndate: 2023-01-01\n---\nThis is a test post.",
         ));
-        
+
         // Add a regular page
         site_index.add_page(PageSource::from_string(
             "about.md",
@@ -163,13 +159,13 @@ mod test {
         ));
 
         let rendered_site = site_index.render().expect("Failed to render site");
-        
+
         // Generate sitemap
         let mut output = Vec::new();
         generate_sitemap(&rendered_site, &mut output)?;
-        
+
         let sitemap_xml = String::from_utf8(output).unwrap();
-        
+
         // Test for explicit expected XML structure with correct ordering
         let expected_patterns = [
             r#"<?xml version="1.0" encoding="utf-8"?>"#,
@@ -182,7 +178,7 @@ mod test {
             r#"<url><loc>/about</loc><lastmod>1970-01-01</lastmod><changefreq>yearly</changefreq><priority>0.6</priority></url>"#,
             r#"</urlset>"#,
         ];
-        
+
         // Verify each expected pattern appears in the correct order
         let mut last_position = 0;
         for pattern in expected_patterns {
@@ -195,7 +191,7 @@ mod test {
                 }
             }
         }
-        
+
         Ok(())
     }
 }

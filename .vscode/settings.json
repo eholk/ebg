@@ -25,6 +25,7 @@
         "tempfile",
         "tera",
         "thiserror",
-        "walkdir"
+        "walkdir",
+        "wayback"
     ]
 }

@@ -1,14 +1,9 @@
-use std::fmt::Formatter;
-
-use email_address_parser::EmailAddress;
-use miette::{diagnostic, Diagnostic};
+use miette::diagnostic;
 use pulldown_cmark::{CowStr, Event, Tag};
-use thiserror::Error;
 use tracing::debug;
-use url::Url;
 
 use crate::{
-    index::{PageMetadata, PageSource, SiteMetadata},
+    index::{LinkDest, PageMetadata, PageSource, SiteMetadata},
     renderer::RenderContext,
 };
 
@@ -88,108 +83,9 @@ pub fn adjust_relative_links<'a>(
         .collect()
 }
 
-#[derive(Debug)]
-enum LinkDest {
-    External(Url),
-    Local(String),
-    /// The link is an email address
-    Email(String),
-}
-
-impl LinkDest {
-    fn parse(s: &str) -> Result<Self, LinkDestError> {
-        if let Ok(url) = Url::parse(s) {
-            Ok(Self::External(url))
-        } else if EmailAddress::parse(s, None).is_some() {
-            Ok(Self::Email(s.to_string()))
-        } else {
-            Ok(Self::Local(s.to_string()))
-        }
-    }
-
-    fn is_local(&self) -> bool {
-        match self {
-            Self::External(_) | Self::Email(_) => false,
-            Self::Local(_) => true,
-        }
-    }
-
-    fn is_relative(&self) -> bool {
-        match self {
-            Self::External(_) | Self::Email(_) => false,
-            Self::Local(s) => !s.starts_with('/'),
-        }
-    }
-
-    fn is_absolute(&self) -> bool {
-        !self.is_relative()
-    }
-
-    fn fragment(&self) -> Option<&str> {
-        match self {
-            Self::External(url) => url.fragment(),
-            Self::Local(s) => s.rsplit_once('#').map(|(_, f)| f),
-            Self::Email(_) => None,
-        }
-    }
-
-    fn path(&self) -> &str {
-        match self {
-            Self::External(url) => url.path(),
-            Self::Local(s) => {
-                let path = s.split_once('#').map_or(s.as_str(), |(p, _)| p);
-                if path.starts_with("./") {
-                    &path[2..]
-                } else {
-                    path
-                }
-            }
-            Self::Email(source) => &source,
-        }
-    }
-
-    /// Determines whether a reference could potentially be a link to a source
-    /// file that's processed by EBG.
-    fn is_possible_source_link(&self) -> bool {
-        if !self.is_local() {
-            return false;
-        }
-        if self.is_absolute() {
-            return false;
-        }
-
-        let path = self.path();
-        if path.is_empty() {
-            return false;
-        }
-        if path.ends_with('/') {
-            return false;
-        }
-        if path.ends_with(".md") {
-            return true;
-        }
-
-        // err on the side of too many source links.
-        true
-    }
-}
-
-impl std::fmt::Display for LinkDest {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::External(url) => write!(f, "{}", url),
-            Self::Local(s) => write!(f, "{}", s),
-            Self::Email(source) => write!(f, "{}", source),
-        }
-    }
-}
-
-#[derive(Diagnostic, Debug, Error)]
-enum LinkDestError {}
-
 #[cfg(test)]
 mod test {
-    use super::LinkDest;
+    use crate::index::LinkDest;
 
     #[test]
     fn external_link() -> miette::Result<()> {

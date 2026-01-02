@@ -98,7 +98,9 @@ impl<'a> GeneratorContext<'a> {
     /// Check if a template with the given name exists
     fn has_template(&self, template_name: &str) -> bool {
         let template_name = &format!("{template_name}.html");
-        self.templates.get_template_names().any(|name| name == template_name)
+        self.templates
+            .get_template_names()
+            .any(|name| name == template_name)
     }
 
     pub async fn generate_site(&self, site: &RenderedSite<'_>) -> super::Result<()> {
@@ -181,56 +183,68 @@ impl<'a> GeneratorContext<'a> {
         if self.has_template("category") {
             self.generate_category_pages(site)?;
         }
-        
+
         Ok(())
     }
 
     /// Generate index pages for each category
     fn generate_category_pages(&self, site: &RenderedSite<'_>) -> Result<(), GeneratorError> {
         // Iterate through all categories
-        for (category, pages) in site.categories_and_pages() {            // Create a directory for the category using a slug of its name
+        for (category, pages) in site.categories_and_pages() {
+            // Create a directory for the category using a slug of its name
             let category_slug = category.slug();
-            let dest_dir = self.options.destination
+            let dest_dir = self
+                .options
+                .destination
                 .join("blog")
                 .join("category")
                 .join(&category_slug);
-            
-            debug!("Generating category page for '{}' at {}", 
-                   category.name, dest_dir.display());
-                
+
+            debug!(
+                "Generating category page for '{}' at {}",
+                category.name,
+                dest_dir.display()
+            );
+
             // Create the directory
             std::fs::create_dir_all(&dest_dir)
                 .map_err(|e| GeneratorError::CreateDestDir(dest_dir.clone(), e))?;
-            
+
             let dest = dest_dir.join("index.html");
-              // Prepare template context
+            // Prepare template context
             let mut context = tera::Context::new();
             context.insert("site", &site.value());
             context.insert("category", &category.name);
-              // Create a page value with title for the category
+            // Create a page value with title for the category
             let mut page_value = serde_json::Map::new();
-            page_value.insert("title".to_string(), serde_json::json!(format!("Category: {}", category.name)));
+            page_value.insert(
+                "title".to_string(),
+                serde_json::json!(format!("Category: {}", category.name)),
+            );
             page_value.insert("url".to_string(), serde_json::json!(category.url_path()));
             page_value.insert("content".to_string(), serde_json::json!(""));
             context.insert("page", &page_value);
-            
+
             // Add sorted pages for this category
             let mut category_posts: Vec<_> = pages.collect();
             category_posts.sort_by_key(|p| std::cmp::Reverse(p.publish_date()));
-            
-            context.insert("posts", &category_posts.iter().map(|p| p.value()).collect::<Vec<_>>());
+
+            context.insert(
+                "posts",
+                &category_posts.iter().map(|p| p.value()).collect::<Vec<_>>(),
+            );
             context.insert("theme", &site.config().theme_opts);
-            
+
             // Render the template
-            let content = self.templates
+            let content = self
+                .templates
                 .render("category.html", &context)
                 .map_err(|e| GeneratorError::RenderTemplate(Box::new(e)))?;
-            
+
             // Write the output file
-            std::fs::write(&dest, content)
-                .map_err(|e| GeneratorError::WriteFile(dest, e))?;
+            std::fs::write(&dest, content).map_err(|e| GeneratorError::WriteFile(dest, e))?;
         }
-        
+
         Ok(())
     }
 

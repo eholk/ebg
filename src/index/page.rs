@@ -8,16 +8,19 @@ use std::{
 
 use chrono::{DateTime, Datelike, Local, TimeZone, Utc};
 use miette::Diagnostic;
+use pulldown_cmark::{Event, Options, Parser, Tag};
 use serde::Deserialize;
 use thiserror::Error;
-use tokio::fs::read_to_string;
+use tokio::fs::{self, read_to_string};
 use tracing::debug;
+use url::Url;
 
 use self::parsing_helpers::{
-    deserialize_comma_separated_list, deserialize_date, find_frontmatter_delimiter,
+    deserialize_comma_separated_list, deserialize_date_opt, find_frontmatter_delimiter,
 };
+use super::LinkDest;
 
-mod parsing_helpers;
+pub(crate) mod parsing_helpers;
 
 type Date = DateTime<Utc>;
 
@@ -27,7 +30,7 @@ pub struct FrontMatter {
     #[serde(default)]
     title: String,
     #[serde(default)]
-    #[serde(deserialize_with = "deserialize_date")]
+    #[serde(deserialize_with = "deserialize_date_opt")]
     date: Option<Date>,
     #[allow(unused)]
     comments: Option<bool>,
@@ -87,6 +90,7 @@ pub struct PageSource {
     frontmatter: Option<Range<usize>>,
     mainmatter: RangeFrom<usize>,
     parsed_frontmatter: Option<FrontMatter>,
+    wayback_links: Option<super::WaybackLinks>,
 }
 
 impl PageSource {
@@ -105,11 +109,32 @@ impl PageSource {
         let contents = read_to_string(&filename)
             .await
             .map_err(PageLoadError::ReadingPostContents)?;
-        Ok(Self::from_string(
+
+        // Try to load wayback links if they exist
+        let wayback_path = if filename.ends_with("index.md") {
+            // Directory-based post: _posts/2023-01-25-hello/index.md -> _posts/2023-01-25-hello/wayback.toml
+            filename.parent().unwrap().join("wayback.toml")
+        } else {
+            // Single-file post: _posts/2023-01-25-hello.md -> _posts/2023-01-25-hello.wayback.toml
+            filename.with_file_name(format!(
+                "{}.wayback.toml",
+                filename.file_stem().unwrap().to_string_lossy()
+            ))
+        };
+
+        let wayback_links = if fs::try_exists(&wayback_path).await.unwrap_or(false) {
+            super::WaybackLinks::from_file(&wayback_path).ok()
+        } else {
+            None
+        };
+
+        let mut page = Self::from_string(
             pathdiff::diff_paths(filename, root_dir).unwrap(),
             kind,
             contents,
-        ))
+        );
+        page.wayback_links = wayback_links;
+        Ok(page)
     }
 
     pub fn from_string(
@@ -152,6 +177,7 @@ impl PageSource {
             frontmatter,
             mainmatter,
             parsed_frontmatter,
+            wayback_links: None,
         }
     }
 
@@ -213,6 +239,40 @@ impl PageSource {
         self.frontmatter()
             .map(|front| front.show_in_home)
             .unwrap_or(true)
+    }
+
+    /// Extracts external links from the page's markdown content.
+    ///
+    /// This parses the markdown and returns all links that appear to be
+    /// external URLs (not relative paths, fragments, or email addresses).
+    pub fn external_links(&self) -> impl Iterator<Item = Url> {
+        let mut links = Vec::new();
+
+        // Only process markdown content
+        if self.format != SourceFormat::Markdown {
+            return links.into_iter();
+        }
+
+        let markdown = self.mainmatter();
+        let parser = Parser::new_ext(markdown, Options::all());
+
+        for event in parser {
+            if let Event::Start(Tag::Link { dest_url, .. }) = event {
+                // Parse the link to classify it - only include external http/https URLs
+                if let Ok(LinkDest::External(url)) = LinkDest::parse(dest_url.as_ref()) {
+                    if url.scheme() == "http" || url.scheme() == "https" {
+                        links.push(url);
+                    }
+                }
+            }
+        }
+
+        links.into_iter()
+    }
+
+    /// Returns the wayback links for this page, if any exist.
+    pub fn wayback_links(&self) -> Option<&super::WaybackLinks> {
+        self.wayback_links.as_ref()
     }
 }
 
@@ -311,7 +371,7 @@ fn parse_filename(path: &Path) -> Result<(Date, SourceFormat, &str), ParseFilena
 
     // FIXME: replace unwraps with diagnostics to explain why the date is wrong.
     let filename = path.file_stem().unwrap().to_str().unwrap();
-    
+
     // Check if this is an index.md file in a directory
     // If so, try to parse the date from the parent directory name instead of "index"
     // This enables directory-based posts like: _posts/2023-11-08-post-name/index.md
@@ -325,7 +385,7 @@ fn parse_filename(path: &Path) -> Result<(Date, SourceFormat, &str), ParseFilena
     } else {
         filename
     };
-    
+
     match parse_date_from_filename(name_to_parse) {
         Some((date, rest)) => Ok((date, kind, rest)),
         None => Ok((
@@ -682,5 +742,39 @@ tags: tag1, tag2
         println!("frontmatter: {front:#?}");
         assert_eq!(front.tags, vec!["tag1".to_string(), "tag2".to_string()]);
         Ok(())
+    }
+
+    #[test]
+    fn test_external_links() {
+        const SRC: &str = r#"---
+layout: post
+title: "Test Post"
+---
+
+# Test Post
+
+Check out [Rust](https://www.rust-lang.org/) and [Wikipedia](https://en.wikipedia.org/wiki/Rust).
+
+Also see [this local page](/about/) and [another post](../other-post.md).
+
+Email me at [me@example.com](mailto:me@example.com).
+
+Jump to [the section](#section).
+"#;
+        let post =
+            PageSource::from_string("_posts/2023-01-24-test.md", SourceFormat::Markdown, SRC);
+
+        let links = post.external_links().collect::<Vec<_>>();
+        assert_eq!(links.len(), 2);
+        assert!(
+            links
+                .iter()
+                .any(|u| u.as_str() == "https://www.rust-lang.org/")
+        );
+        assert!(
+            links
+                .iter()
+                .any(|u| u.as_str() == "https://en.wikipedia.org/wiki/Rust")
+        );
     }
 }

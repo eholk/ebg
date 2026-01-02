@@ -83,7 +83,7 @@ fn heading_to_anchor(heading: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::heading_to_anchor;
-    use pulldown_cmark::{html::push_html, Event, Parser, Tag};
+    use pulldown_cmark::{Event, Parser, Tag, html::push_html};
 
     /// Makes sure we generate the right anchor for various headers
     #[test]

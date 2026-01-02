@@ -9,16 +9,16 @@ This page describes the various supported configuration options.
 
 ## Top Level Configuration
 
-- `title`: The title of the site.  
+- `title`: The title of the site.
   This is available to themes as `site.title`.
-- `subtitle`: A tagline or subtitle for the site.  
+- `subtitle`: A tagline or subtitle for the site.
   This is available to themes as `site.subtitle`.
-- `author`: The name of the author of the site.  
+- `author`: The name of the author of the site.
   This is available to themes as `site.author`.
-- `author_email`: The email address of the author of the site.  
+- `author_email`: The email address of the author of the site.
   This is available to themes as `site.author_email`.
 - `url`: The base URL for where the site is ultimately published. Most generated
-  links will be prefixed by this.  
+  links will be prefixed by this.
   This is available to themes as `site.url`.
 - `posts`: The directory containing posts. Posts are handled specially because
   their filename is parsed to extract details like the publication date. The
@@ -35,5 +35,7 @@ This page describes the various supported configuration options.
   listed as `m = macros.html`, and then the macros defined in `macros.html` are
   available under the `m::` namespace. See the [Tera Macros page][tera-macros]
   for more information.
+- `wayback`: Configuration for automatic external link archiving. See
+  [Wayback](wayback.md) for more information.
 
 [tera-macros]: https://keats.github.io/tera/docs/#macros

@@ -2,6 +2,8 @@
 
 use std::{
     collections::{BTreeMap, HashMap},
+    fs::File,
+    io::Read,
     ops::Index,
     path::{Path, PathBuf},
 };
@@ -13,9 +15,15 @@ use thiserror::Error;
 use tokio::fs;
 use tokio_stream::wrappers::ReadDirStream;
 
+mod links;
 mod page;
+mod wayback_links;
 
+pub use links::{LinkDest, LinkDestError};
 pub use page::{PageKind, PageMetadata, PageSource, SourceFormat};
+pub use wayback_links::{WaybackLink, WaybackLinks, WaybackLinksError};
+
+use crate::wayback::Snapshot;
 
 use self::page::PageLoadError;
 
@@ -38,6 +46,41 @@ pub struct Config {
     /// Within theme templates, these are available under the `theme` variable.
     #[serde(default)]
     pub theme_opts: serde_json::Value,
+
+    pub wayback: Option<WaybackConfig>,
+}
+
+#[derive(Deserialize, Default)]
+pub struct WaybackConfig {
+    pub snapshots: PathBuf,
+    pub exclude: Vec<WaybackFilter>,
+}
+
+impl WaybackConfig {
+    /// Checks if a post should be excluded from wayback archiving based on filters.
+    pub fn should_exclude_post(&self, post: &PageSource) -> bool {
+        for filter in &self.exclude {
+            match filter {
+                WaybackFilter::Before(date) => {
+                    if let Some(post_date) = post.publish_date() {
+                        if post_date < *date {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+        false
+    }
+}
+
+#[derive(Deserialize, PartialEq, Debug)]
+pub enum WaybackFilter {
+    #[serde(rename = "before")]
+    Before(
+        #[serde(deserialize_with = "page::parsing_helpers::deserialize_date")]
+        chrono::DateTime<chrono::Utc>,
+    ),
 }
 
 #[non_exhaustive]
@@ -134,6 +177,10 @@ impl SiteIndex {
         })
     }
 
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
     pub fn posts(&self) -> impl Iterator<Item = &PageSource> {
         self.pages
             .iter()
@@ -159,6 +206,22 @@ impl SiteIndex {
         self.pages.push(page);
     }
 
+    /// Loads the Wayback snapshot file
+    pub fn load_wayback_snapshot(&self) -> Result<Option<Snapshot>, WaybackError> {
+        let Some(WaybackConfig {
+            snapshots: ref src,
+            exclude: _,
+        }) = self.config().wayback
+        else {
+            return Ok(None);
+        };
+
+        let mut buf = <_>::default();
+        File::open(src)?.read_to_string(&mut buf)?;
+        let snapshot = toml::from_str(&buf)?;
+        Ok(Some(snapshot))
+    }
+
     pub fn categories(&self) -> impl Iterator<Item = &Category> {
         self.categories.values()
     }
@@ -170,6 +233,23 @@ impl SiteIndex {
             .flat_map(|cat| cat.posts.iter())
             .map(|id| &self.pages[id.0])
     }
+}
+
+/// Errors that can occur while loading the Wayback snapshot file
+#[derive(Debug, Diagnostic, Error)]
+pub enum WaybackError {
+    #[error("reading snapshot file")]
+    FileRead(
+        #[source]
+        #[from]
+        std::io::Error,
+    ),
+    #[error("parsing snapshot file")]
+    ParseError(
+        #[source]
+        #[from]
+        toml::de::Error,
+    ),
 }
 
 impl Index<PageId> for SiteIndex {
@@ -264,8 +344,11 @@ async fn load_posts(
     while let Some(entry) = dir_stream.next().await {
         let entry = entry.map_err(IndexError::ReadingDirectoryEntry)?;
         let entry_path = entry.path();
-        let metadata = entry.metadata().await.map_err(IndexError::ReadingDirectoryEntry)?;
-        
+        let metadata = entry
+            .metadata()
+            .await
+            .map_err(IndexError::ReadingDirectoryEntry)?;
+
         // Check if this is a directory containing an index.md file
         let file_to_load = if metadata.is_dir() {
             let index_file = entry_path.join("index.md");
@@ -275,9 +358,17 @@ async fn load_posts(
                 _ => continue, // Skip directories without index.md
             }
         } else {
+            // Skip .wayback.toml files - they're metadata, not posts
+            if entry_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map_or(false, |s| s.ends_with(".wayback.toml"))
+            {
+                continue;
+            }
             entry_path
         };
-        
+
         let page = match PageSource::from_file(file_to_load, root_dir).await {
             Ok(page) => page,
             Err(e) if e.severity() <= Some(Severity::Warning) => {
@@ -371,6 +462,13 @@ impl Category {
 
 #[cfg(test)]
 mod test {
+    use std::path::Path;
+
+    use chrono::{DateTime, Utc};
+    use miette::IntoDiagnostic;
+
+    use crate::index::WaybackFilter;
+
     use super::Config;
 
     #[test]
@@ -382,5 +480,27 @@ mod test {
         let config: Config = toml::from_str(config).unwrap();
 
         assert_eq!(config.url, Some("https://example.com".to_string()));
+    }
+
+    #[test]
+    fn parse_wayback_config() -> miette::Result<()> {
+        let config = r#"
+        [wayback]
+        snapshots = "wayback.toml"
+        exclude = [{ before = "2024-01-01" }]
+"#;
+
+        let config: super::Config = toml::from_str(config).into_diagnostic()?;
+        let wayback = config.wayback.unwrap();
+
+        assert_eq!(wayback.snapshots.as_path(), Path::new("wayback.toml"));
+        assert_eq!(wayback.exclude.len(), 1);
+
+        let date = DateTime::parse_from_rfc3339("2024-01-01T00:00:00Z")
+            .into_diagnostic()?
+            .with_timezone(&Utc);
+        assert_eq!(wayback.exclude[0], WaybackFilter::Before(date));
+
+        Ok(())
     }
 }

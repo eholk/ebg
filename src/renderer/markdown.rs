@@ -12,10 +12,12 @@ mod anchors;
 mod code;
 mod footnotes;
 mod source_links;
+mod wayback_indicators;
 
 pub use code::CodeFormatter;
 pub use footnotes::collect_footnotes;
 pub use source_links::adjust_relative_links;
+use wayback_indicators::add_wayback_indicators;
 
 /// Renders a page's markdown contents
 ///
@@ -39,8 +41,10 @@ pub(super) fn render_markdown(
 
     let parser = adjust_relative_links(parser.collect(), source, rcx);
 
+    let parser = add_wayback_indicators(parser.into_iter(), source.wayback_links());
+
     let mut anchors = HeadingAnchors::new();
-    let parser = anchors.add_anchors(parser.into_iter());
+    let parser = anchors.add_anchors(parser);
 
     let mut markdown_buffer = String::with_capacity(contents.len() * 2);
     pulldown_cmark::html::push_html(

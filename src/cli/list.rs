@@ -5,7 +5,7 @@ use ebg::index::{PageKind, SiteIndex};
 use miette::IntoDiagnostic;
 use tokio::runtime::Runtime;
 
-use super::{build::find_site_root, Command};
+use super::{Command, build::find_site_root};
 
 #[derive(Args)]
 pub struct ListOptions {

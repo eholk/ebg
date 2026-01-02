@@ -1,5 +1,5 @@
 use clap::Parser;
-use syntect::{parsing::SyntaxSet, highlighting::ThemeSet};
+use syntect::{highlighting::ThemeSet, parsing::SyntaxSet};
 
 use super::Command;
 
