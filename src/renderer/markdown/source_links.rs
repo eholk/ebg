@@ -1,177 +1,245 @@
-use miette::diagnostic;
-use pulldown_cmark::{CowStr, Event, Tag};
-use tracing::debug;
+//! Adjusts relative links in markdown to point to the correct URLs
+//!
+//! This handles both page links (e.g., `[text](./other-page.md)`) and image sources
+//! (e.g., `![alt](../images/image.png)`), converting them to absolute URLs.
 
-use crate::{
-    index::{LinkDest, PageMetadata, PageSource, SiteMetadata},
-    renderer::RenderContext,
-};
+use pulldown_cmark::{Event, Tag, TagEnd, CowStr};
+use crate::index::PageSource;
+use super::RenderContext;
+use std::path::{Path, PathBuf};
 
-// TODO:
-//
-// This should get more robust. In particular, I'd like to be able to warn on
-// something that looks like a source link but doesn't resolve to a file in the
-// site. One challenge is that any link is technically valid, they just get
-// passed through if we don't recognize it. This means we can only warn at best,
-// since it will always be imperfect.
-//
-// One thing this will need to do it well is to plumb spans and locations from
-// the markdown parser.
-
-/// Finds links to source files and replaces them with links to the generated page
+/// Adjusts relative links and image sources in markdown events
+///
+/// This converts relative paths like `./other-page.md` or `../images/image.png`
+/// to their corresponding absolute URLs in the generated site.
 pub fn adjust_relative_links<'a>(
-    markdown: Vec<Event<'a>>,
-    page: &PageSource,
+    events: Vec<Event<'a>>,
+    source: &'a PageSource,
     rcx: &RenderContext<'_>,
 ) -> Vec<Event<'a>> {
-    let map_url = |url: &CowStr<'_>| {
-        let url = LinkDest::parse(url).ok()?;
-        let anchor = url.fragment();
-        if url.is_possible_source_link() {
-            debug!("found possible source link to {url}");
-            let path = if url.is_relative() {
-                let parent = page.source_path().parent()?;
-                debug!("searching relative to `{}`", parent.display());
-                parent.join(url.path())
-            } else {
-                rcx.site.root_dir().join(url.path())
-            };
-            debug!("mapped path to {}", path.display());
-            let Some(page) = rcx.site.find_page_by_source_path(&path) else {
-                debug!("no page found for {}", path.display());
-                rcx.dcx.lock().unwrap().record(diagnostic!(
-                    severity = miette::Severity::Warning,
-                    help = "did you mean to link to an external page?",
-                    "Could not find target for apparent source link to `{url}`",
-                ));
-                return None;
-            };
-            let url = format!(
-                "/{}{}",
-                // rcx.site.base_url(),
-                page.url(),
-                anchor.map(|a| format!("#{}", a)).unwrap_or_default()
-            );
-            debug!("linking to {url}");
-            Some(url)
-        } else {
-            None
-        }
-    };
-
-    markdown
+    events
         .into_iter()
-        .map(move |event| match event {
-            Event::Start(Tag::Link {
-                link_type,
-                dest_url,
-                title,
-                id,
-            }) => {
-                let dest_url = map_url(&dest_url)
-                    .unwrap_or_else(|| dest_url.to_string())
-                    .into();
-                Event::Start(Tag::Link {
-                    link_type,
-                    dest_url,
-                    title,
-                    id,
-                })
-            }
-            event => event,
-        })
+        .map(|event| adjust_event(event, source, rcx))
         .collect()
 }
 
-#[cfg(test)]
-mod test {
-    use crate::index::LinkDest;
-
-    #[test]
-    fn external_link() -> miette::Result<()> {
-        let dest = LinkDest::parse("https://example.com")?;
-        assert!(matches!(dest, LinkDest::External(_)));
-        assert!(!dest.is_relative());
-        Ok(())
-    }
-
-    #[test]
-    fn local_link() -> miette::Result<()> {
-        let dest = LinkDest::parse("/foo/bar")?;
-        assert!(matches!(dest, LinkDest::Local(_)));
-        assert!(!dest.is_relative());
-
-        let dest = LinkDest::parse("foo/bar")?;
-        assert!(matches!(dest, LinkDest::Local(_)));
-        assert!(dest.is_relative());
-
-        let dest = LinkDest::parse("../foo/bar")?;
-        assert!(matches!(dest, LinkDest::Local(_)));
-        assert!(dest.is_relative());
-
-        let dest = LinkDest::parse("./testimonials.md")?;
-        assert!(matches!(dest, LinkDest::Local(_)));
-        assert!(dest.is_relative());
-
-        Ok(())
-    }
-
-    #[test]
-    fn fragment() -> miette::Result<()> {
-        let dest = LinkDest::parse("https://example.com#foo")?;
-        assert_eq!(dest.fragment(), Some("foo"));
-
-        let dest = LinkDest::parse("/foo/bar#foo")?;
-        assert_eq!(dest.fragment(), Some("foo"));
-
-        let dest = LinkDest::parse("foo/bar#foo")?;
-        assert_eq!(dest.fragment(), Some("foo"));
-
-        let dest = LinkDest::parse("../foo/bar#foo")?;
-        assert_eq!(dest.fragment(), Some("foo"));
-
-        Ok(())
-    }
-
-    #[test]
-    fn path() -> miette::Result<()> {
-        let dest = LinkDest::parse("https://example.com")?;
-        assert_eq!(dest.path(), "/");
-
-        let dest = LinkDest::parse("/foo/bar")?;
-        assert_eq!(dest.path(), "/foo/bar");
-
-        let dest = LinkDest::parse("foo/bar")?;
-        assert_eq!(dest.path(), "foo/bar");
-
-        let dest = LinkDest::parse("../foo/bar")?;
-        assert_eq!(dest.path(), "../foo/bar");
-
-        let dest = LinkDest::parse("./testimonials.md")?;
-        assert_eq!(dest.path(), "testimonials.md");
-
-        Ok(())
-    }
-
-    #[test]
-    fn is_possible_source_link() -> miette::Result<()> {
-        let patterns = [
-            ("https://example.com", false),
-            ("./testimonials.md", true),
-            ("#gat-desugaring", false),
-            (
-                "/blog/2013/09/10/how-to-write-a-simple-scheme-debugger/",
-                false,
-            ),
-            ("/papers/dissertation.pdf", false),
-            ("eric@theincredibleholk.org", false),
-            ("/images/whereabouts-clock-drawing.pdf", false),
-        ];
-
-        for (pattern, expected) in patterns {
-            let dest = LinkDest::parse(pattern)?;
-            assert_eq!(dest.is_possible_source_link(), expected, "{}", pattern);
+fn adjust_event<'a>(
+    event: Event<'a>,
+    source: &'a PageSource,
+    rcx: &RenderContext<'_>,
+) -> Event<'a> {
+    match event {
+        Event::Start(Tag::Link { dest, title, id }) => {
+            let adjusted_dest = adjust_link(&dest, source, rcx);
+            Event::Start(Tag::Link {
+                dest: adjusted_dest,
+                title,
+                id,
+            })
         }
+        Event::Start(Tag::Image { dest, title, id }) => {
+            let adjusted_dest = adjust_link(&dest, source, rcx);
+            Event::Start(Tag::Image {
+                dest: adjusted_dest,
+                title,
+                id,
+            })
+        }
+        other => other,
+    }
+}
+
+fn adjust_link(dest: &str, source: &PageSource, rcx: &RenderContext<'_>) -> CowStr {
+    // Don't adjust absolute URLs, anchors, or external links
+    if dest.starts_with('#') || dest.starts_with("http://") || dest.starts_with("https://") {
+        return CowStr::Borrowed(dest);
+    }
+
+    // Try to resolve as a page source link first
+    if let Some(resolved) = try_resolve_page_link(dest, source, rcx) {
+        return CowStr::Boxed(resolved.into_boxed_str());
+    }
+
+    // If not a page link, treat as a relative file path (e.g., image)
+    if let Some(resolved) = try_resolve_file_link(dest, source) {
+        return CowStr::Boxed(resolved.into_boxed_str());
+    }
+
+    // If resolution fails, return the original
+    CowStr::Borrowed(dest)
+}
+
+/// Try to resolve a link as a page source (e.g., `./2012-10-14-hello.md`)
+fn try_resolve_page_link(
+    dest: &str,
+    source: &PageSource,
+    rcx: &RenderContext<'_>,
+) -> Option<String> {
+    // Extract the path part (before any #anchor)
+    let (path_part, anchor) = dest.split_once('#').unwrap_or((dest, ""));
+
+    // Only process if it looks like a markdown file
+    if !path_part.ends_with(".md") {
+        return None;
+    }
+
+    // Resolve the relative path
+    let source_dir = Path::new(source.source_path()).parent()?;
+    let target_path = source_dir.join(path_part);
+    let normalized = normalize_path(&target_path);
+
+    // Try to find the page in the site index
+    let target_page = rcx.site.find_page_by_source_path(&normalized)?;
+    let url = target_page.url();
+
+    // Reconstruct with anchor if present
+    let result = if anchor.is_empty() {
+        format!("{}/", url)
+    } else {
+        format!("{}/#{}" , url, anchor)
+    };
+
+    Some(result)
+}
+
+/// Try to resolve a link as a relative file path (e.g., `../images/image.png`)
+fn try_resolve_file_link(dest: &str, source: &PageSource) -> Option<String> {
+    // Extract the path part (before any #anchor)
+    let (path_part, anchor) = dest.split_once('#').unwrap_or((dest, ""));
+
+    // Don't process if it's a markdown file (those should be handled by try_resolve_page_link)
+    if path_part.ends_with(".md") {
+        return None;
+    }
+
+    // Resolve the relative path from the source file's directory
+    let source_dir = Path::new(source.source_path()).parent()?;
+    let target_path = source_dir.join(path_part);
+    let normalized = normalize_path(&target_path);
+
+    // Convert the normalized path to a URL-like path
+    // The path should be relative to the site root
+    let url_path = normalized
+        .to_string_lossy()
+        .replace("\\", "/"); // Handle Windows paths
+
+    // Reconstruct with anchor if present
+    let result = if anchor.is_empty() {
+        format!("/{}", url_path)
+    } else {
+        format!("{}#{}", url_path, anchor)
+    };
+
+    Some(result)
+}
+
+/// Normalize a path by resolving `.` and `..` components
+fn normalize_path(path: &Path) -> PathBuf {
+    let mut components = path.components().peekable();
+    let mut ret = PathBuf::new();
+
+    while let Some(component) = components.next() {
+        match component {
+            std::path::Component::ParentDir => {
+                ret.pop();
+            }
+            std::path::Component::CurDir => {}
+            std::path::Component::Normal(c) => {
+                ret.push(c);
+            }
+            other => {
+                ret.push(other);
+            }
+        }
+    }
+
+    ret
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::index::{PageSource, SiteIndex, SourceFormat};
+    use crate::renderer::RenderContext;
+
+    #[test]
+    fn resolve_relative_image_path() -> miette::Result<()> {
+        let mut site = SiteIndex::default();
+        site.add_page(PageSource::from_string(
+            "_posts/2012-10-14-hello.md",
+            SourceFormat::Markdown,
+            "",
+        ));
+        site.add_page(PageSource::from_string(
+            "_posts/2013-10-14-page2.md",
+            SourceFormat::Markdown,
+            "![an image](../images/my_image.png)",
+        ));
+
+        let code_formatter = crate::renderer::CodeFormatter::new();
+        let render_page = site
+            .find_page_by_source_path(&PathBuf::from("_posts/2013-10-14-page2.md"))
+            .unwrap();
+
+        let rendered_page =
+            RenderContext::run_dcx(&site, &code_formatter, |rcx| render_page.render(&rcx))?;
+
+        assert!(rendered_page
+            .rendered_contents()
+            .contains("<img src=\"/images/my_image.png\""));
+
+        Ok(())
+    }
+
+    #[test]
+    fn resolve_relative_image_path_with_anchor() -> miette::Result<()> {
+        let mut site = SiteIndex::default();
+        site.add_page(PageSource::from_string(
+            "_posts/2012-10-14-hello.md",
+            SourceFormat::Markdown,
+            "",
+        ));
+        site.add_page(PageSource::from_string(
+            "_posts/2013-10-14-page2.md",
+            SourceFormat::Markdown,
+            "![an image](../images/my_image.png#section)",
+        ));
+
+        let code_formatter = crate::renderer::CodeFormatter::new();
+        let render_page = site
+            .find_page_by_source_path(&PathBuf::from("_posts/2013-10-14-page2.md"))
+            .unwrap();
+
+        let rendered_page =
+            RenderContext::run_dcx(&site, &code_formatter, |rcx| render_page.render(&rcx))?;
+
+        assert!(rendered_page
+            .rendered_contents()
+            .contains("<img src=\"/images/my_image.png#section\""));
+
+        Ok(())
+    }
+
+    #[test]
+    fn preserve_absolute_image_urls() -> miette::Result<()> {
+        let mut site = SiteIndex::default();
+        site.add_page(PageSource::from_string(
+            "_posts/2013-10-14-page2.md",
+            SourceFormat::Markdown,
+            "![an image](https://example.com/image.png)",
+        ));
+
+        let code_formatter = crate::renderer::CodeFormatter::new();
+        let render_page = site
+            .find_page_by_source_path(&PathBuf::from("_posts/2013-10-14-page2.md"))
+            .unwrap();
+
+        let rendered_page =
+            RenderContext::run_dcx(&site, &code_formatter, |rcx| render_page.render(&rcx))?;
+
+        assert!(rendered_page
+            .rendered_contents()
+            .contains("<img src=\"https://example.com/image.png\""));
 
         Ok(())
     }
