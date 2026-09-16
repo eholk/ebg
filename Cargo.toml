@@ -24,7 +24,7 @@ notify = "8"
 open = "5"
 pathdiff = "0.2"
 pulldown-cmark = "0.13"
-quick-xml = "0.38"
+quick-xml = "0.42"
 rayon = "1"
 reqwest = { version = "0.11.23", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
