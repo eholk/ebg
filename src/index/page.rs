@@ -1,6 +1,7 @@
 //! Data structures representing a page.
 
 use std::{
+    collections::HashSet,
     ffi::OsStr,
     ops::{Range, RangeFrom},
     path::{Path, PathBuf},
@@ -243,8 +244,13 @@ impl PageSource {
 
     /// Extracts external links from the page's markdown content.
     ///
-    /// This parses the markdown and returns all links that appear to be
-    /// external URLs (not relative paths, fragments, or email addresses).
+    /// This parses the markdown and returns each link that appears to be an
+    /// external URL (not a relative path, fragment, or email address) exactly
+    /// once, in the order it first appears. A URL that the post links to more
+    /// than once, such as a link written out inline and again as a reference
+    /// definition, is reported only once, so callers that act per unique URL
+    /// (for example archiving links with the Wayback Machine) don't repeat work
+    /// for the same destination.
     pub fn external_links(&self) -> impl Iterator<Item = Url> {
         let mut links = Vec::new();
 
@@ -255,12 +261,17 @@ impl PageSource {
 
         let markdown = self.mainmatter();
         let parser = Parser::new_ext(markdown, Options::all());
+        let mut seen = HashSet::new();
 
         for event in parser {
             if let Event::Start(Tag::Link { dest_url, .. }) = event {
                 // Parse the link to classify it - only include external http/https URLs
                 if let Ok(LinkDest::External(url)) = LinkDest::parse(dest_url.as_ref()) {
-                    if url.scheme() == "http" || url.scheme() == "https" {
+                    let is_web_url = url.scheme() == "http" || url.scheme() == "https";
+
+                    // Skip URLs we've already seen so each destination is only
+                    // reported once per page.
+                    if is_web_url && seen.insert(url.clone()) {
                         links.push(url);
                     }
                 }
@@ -775,6 +786,42 @@ Jump to [the section](#section).
             links
                 .iter()
                 .any(|u| u.as_str() == "https://en.wikipedia.org/wiki/Rust")
+        );
+    }
+
+    #[test]
+    fn test_external_links_are_unique() {
+        // Each URL is linked twice: `rust-lang.org` inline both times, and
+        // `en.wikipedia.org` once inline and once through a reference
+        // definition.
+        const SRC: &str = r#"---
+layout: post
+title: "Test Post"
+---
+
+# Test Post
+
+Check out [Rust](https://www.rust-lang.org/) and [Wikipedia](https://en.wikipedia.org/wiki/Rust).
+
+Rust again: [rust-lang.org][rust], and [Wikipedia again][wiki].
+
+[rust]: https://www.rust-lang.org/
+[wiki]: https://en.wikipedia.org/wiki/Rust
+"#;
+        let post =
+            PageSource::from_string("_posts/2023-01-24-test.md", SourceFormat::Markdown, SRC);
+
+        // Each unique URL should be reported once, in first-appearance order.
+        let links = post
+            .external_links()
+            .map(|url| url.to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            links,
+            vec![
+                "https://www.rust-lang.org/",
+                "https://en.wikipedia.org/wiki/Rust",
+            ]
         );
     }
 }
