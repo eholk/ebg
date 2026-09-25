@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1](https://github.com/eholk/ebg/compare/v0.7.0...v0.7.1) - 2026-08-15
+
+### Other
+
+- *(deps)* bump async-walkdir from 0.2.0 to 2.1.0
+
 ## [0.7.0](https://github.com/eholk/ebg/compare/v0.6.2...v0.7.0) - 2026-01-02
 
 ### Other
